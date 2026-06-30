@@ -1,100 +1,119 @@
-import type { InferenceSession } from 'onnxruntime-web'
 import type { OnnxNode, OnnxEdge, OnnxGraph } from './onnxTypes'
+import { parseOnnxProto } from './onnxProtoParser'
 
-export function parseOnnxGraph(session: InferenceSession, modelName: string): OnnxGraph {
+export function parseOnnxGraph(buffer: ArrayBuffer, modelName: string): OnnxGraph {
+  const proto = parseOnnxProto(buffer)
+
   const nodes: OnnxNode[] = []
   const edges: OnnxEdge[] = []
-  const tensorToNodeId = new Map<string, string>()
 
-  // Input nodes
-  session.inputNames.forEach((name, i) => {
-    const id = `input_${i}`
-    nodes.push({ id, opType: 'Input', inputs: [], outputs: [name], attributes: {}, paramCount: 0, estimatedSizeMB: 0 })
-    tensorToNodeId.set(name, id)
-  })
+  // Map tensor name -> the node id that produces it
+  const tensorProducer = new Map<string, string>()
 
-  // Try to access internal graph nodes via WASM backend internals
-  const graphNodes: unknown[] = (session as any)?.handler?.model?.graph?.node ?? []
-  const initializers: unknown[] = (session as any)?.handler?.model?.graph?.initializer ?? []
-
-  // Build param count from initializers
-  const initializerSizes = new Map<string, number>()
-  for (const init of initializers) {
-    const i = init as any
-    if (i.name && Array.isArray(i.dims)) {
-      const count = (i.dims as number[]).reduce((a: number, b: number) => a * b, 1)
-      initializerSizes.set(i.name, count)
-    }
+  // Map initializer name -> elem count (weights owned by compute nodes)
+  const initElemCounts = new Map<string, number>()
+  const initSizes = new Map<string, number>()
+  for (const init of proto.initializers) {
+    initElemCounts.set(init.name, init.elemCount)
+    initSizes.set(init.name, init.sizeMB)
   }
 
-  if (graphNodes.length > 0) {
-    graphNodes.forEach((rawNode, idx) => {
-      const n = rawNode as any
-      const opType: string = n.opType ?? n.op_type ?? 'Unknown'
-      const inputNames: string[] = Array.isArray(n.input) ? n.input : []
-      const outputNames: string[] = Array.isArray(n.output) ? n.output : []
-      const nodeId = `node_${idx}_${opType}`
+  // Build a map of tensor name -> shape from graph inputs/outputs and value_info
+  const tensorShapes = new Map<string, import('./onnxProtoParser').OnnxDim[]>()
+  for (const vi of proto.inputs) {
+    if (vi.name && vi.shape) tensorShapes.set(vi.name, vi.shape)
+  }
+  for (const vi of proto.outputs) {
+    if (vi.name && vi.shape) tensorShapes.set(vi.name, vi.shape)
+  }
 
-      const attrs: Record<string, string | number | boolean> = {}
-      if (Array.isArray(n.attribute)) {
-        for (const attr of n.attribute as any[]) {
-          if (attr.name) attrs[attr.name] = attr.f ?? attr.i ?? attr.s ?? attr.t ?? ''
-        }
-      }
+  // Graph input nodes (non-initializer inputs only)
+  const initNames = new Set(proto.initializers.map(i => i.name))
+  const graphInputs = proto.inputs.filter(vi => !initNames.has(vi.name))
 
-      // Sum param count from weight initializers used by this node
-      let paramCount = 0
-      for (const inp of inputNames) {
-        if (initializerSizes.has(inp)) paramCount += initializerSizes.get(inp)!
-      }
-
-      const estimatedSizeMB = (paramCount * 4) / (1024 * 1024)
-      nodes.push({ id: nodeId, opType, inputs: inputNames, outputs: outputNames, attributes: attrs, paramCount, estimatedSizeMB })
-
-      // Wire edges from tensor producers to this node
-      for (const inp of inputNames) {
-        const sourceId = tensorToNodeId.get(inp)
-        if (sourceId) {
-          edges.push({ id: `${sourceId}->${nodeId}`, source: sourceId, target: nodeId, label: inp })
-        }
-      }
-
-      for (const out of outputNames) {
-        tensorToNodeId.set(out, nodeId)
-      }
-    })
-  } else {
-    // Fallback: minimal graph with only input/output nodes when internals not accessible
-    const intermediateId = 'model_body'
+  graphInputs.forEach((vi, i) => {
+    const id = `input_${i}`
     nodes.push({
-      id: intermediateId,
-      opType: 'Model',
-      inputs: [...session.inputNames],
-      outputs: [...session.outputNames],
+      id,
+      opType: 'Input',
+      inputs: [],
+      outputs: [vi.name],
       attributes: {},
       paramCount: 0,
       estimatedSizeMB: 0,
+      outputShapes: vi.shape ? [vi.shape] : undefined,
     })
-    session.inputNames.forEach((name, i) => {
-      edges.push({ id: `input_${i}->${intermediateId}`, source: `input_${i}`, target: intermediateId, label: name })
-    })
-    session.outputNames.forEach((name) => {
-      tensorToNodeId.set(name, intermediateId)
-    })
-  }
+    tensorProducer.set(vi.name, id)
+  })
 
-  // Output nodes
-  session.outputNames.forEach((name, i) => {
+  // Compute nodes
+  proto.nodes.forEach((rawNode, idx) => {
+    const id = `node_${idx}_${rawNode.opType}`
+
+    // Parameter count = sum of elem counts for weight inputs (initializers)
+    let paramCount = 0
+    let estimatedSizeMB = 0
+    for (const inp of rawNode.inputs) {
+      if (initElemCounts.has(inp)) paramCount += initElemCounts.get(inp)!
+      if (initSizes.has(inp)) estimatedSizeMB += initSizes.get(inp)!
+    }
+
+    const inputShapes = rawNode.inputs
+      .filter(name => tensorShapes.has(name))
+      .map(name => tensorShapes.get(name)!)
+
+    const outputShapes = rawNode.outputs
+      .filter(name => tensorShapes.has(name))
+      .map(name => tensorShapes.get(name)!)
+
+    nodes.push({
+      id,
+      opType: rawNode.opType,
+      inputs: rawNode.inputs,
+      outputs: rawNode.outputs,
+      attributes: {},
+      paramCount,
+      estimatedSizeMB,
+      inputShapes: inputShapes.length > 0 ? inputShapes : undefined,
+      outputShapes: outputShapes.length > 0 ? outputShapes : undefined,
+    })
+
+    // Wire edges from tensor producers to this node (skip initializers as visual sources)
+    for (const inp of rawNode.inputs) {
+      if (initNames.has(inp)) continue
+      const sourceId = tensorProducer.get(inp)
+      if (sourceId) {
+        edges.push({ id: `${sourceId}->${id}@${inp}`, source: sourceId, target: id, label: inp })
+      }
+    }
+
+    // Register this node as the producer of its output tensors
+    for (const out of rawNode.outputs) {
+      tensorProducer.set(out, id)
+    }
+  })
+
+  // Graph output nodes
+  proto.outputs.forEach((vi, i) => {
     const id = `output_${i}`
-    const sourceId = tensorToNodeId.get(name)
-    nodes.push({ id, opType: 'Output', inputs: [name], outputs: [], attributes: {}, paramCount: 0, estimatedSizeMB: 0 })
+    const sourceId = tensorProducer.get(vi.name)
+    nodes.push({
+      id,
+      opType: 'Output',
+      inputs: [vi.name],
+      outputs: [],
+      attributes: {},
+      paramCount: 0,
+      estimatedSizeMB: 0,
+      inputShapes: vi.shape ? [vi.shape] : undefined,
+    })
     if (sourceId) {
-      edges.push({ id: `${sourceId}->${id}`, source: sourceId, target: id, label: name })
+      edges.push({ id: `${sourceId}->${id}@${vi.name}`, source: sourceId, target: id, label: vi.name })
     }
   })
 
   const totalParams = nodes.reduce((sum, n) => sum + n.paramCount, 0)
-  const totalSizeMB = (totalParams * 4) / (1024 * 1024)
+  const totalSizeMB = nodes.reduce((sum, n) => sum + n.estimatedSizeMB, 0)
 
   return { nodes, edges, modelName, totalParams, totalSizeMB }
 }
