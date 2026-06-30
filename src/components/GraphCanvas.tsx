@@ -157,7 +157,6 @@ function toFlowGraph(onnxNodes: OnnxNode[], onnxEdges: OnnxEdge[], selectedNodeI
       id: e.id,
       source: e.source,
       target: e.target,
-      label: e.label,
       style: { stroke: '#FFB000', strokeWidth: 1 },
     }))
 

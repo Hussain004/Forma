@@ -115,5 +115,5 @@ export function parseOnnxGraph(buffer: ArrayBuffer, modelName: string): OnnxGrap
   const totalParams = nodes.reduce((sum, n) => sum + n.paramCount, 0)
   const totalSizeMB = nodes.reduce((sum, n) => sum + n.estimatedSizeMB, 0)
 
-  return { nodes, edges, modelName, totalParams, totalSizeMB }
+  return { nodes, edges, modelName, totalParams, totalSizeMB, graphInputs }
 }

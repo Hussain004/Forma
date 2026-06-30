@@ -22,6 +22,7 @@ const ctx = self as unknown as {
 }
 
 let session: ort.InferenceSession | null = null
+let benchmarkInputShapes: Record<string, number[]> = {}
 
 ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
   const cmd = event.data
@@ -34,6 +35,14 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
 
       // Parse graph topology from raw protobuf (reliable, no WASM internals)
       const graph = parseOnnxGraph(bufferForParsing, cmd.payload.filename)
+
+      // Store parsed input shapes for benchmark (symbolic dims -> 1)
+      benchmarkInputShapes = {}
+      for (const vi of graph.graphInputs ?? []) {
+        if (vi.name && vi.shape && vi.shape.length > 0) {
+          benchmarkInputShapes[vi.name] = vi.shape.map(d => ('value' in d ? (d.value || 1) : 1))
+        }
+      }
 
       ctx.postMessage({ type: 'PROGRESS', payload: { stage: 'Loading WASM runtime', percent: 50 } })
 
@@ -59,11 +68,11 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
       if (!session) throw new Error('No model loaded')
       const runs = Math.max(1, Math.min(cmd.payload.runs, 50))
 
-      // Build dummy float32 inputs using the session's metadata
       const feeds: Record<string, ort.Tensor> = {}
       for (const name of session.inputNames) {
-        // Default to a flat tensor of 1 element if shapes are unknown
-        feeds[name] = new ort.Tensor('float32', new Float32Array([0]), [1])
+        const shape = benchmarkInputShapes[name] ?? [1]
+        const size = shape.reduce((a, b) => a * b, 1)
+        feeds[name] = new ort.Tensor('float32', new Float32Array(size), shape)
       }
 
       const times: number[] = []
