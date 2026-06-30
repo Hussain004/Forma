@@ -1,0 +1,31 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap');
+
+:root {
+  --font-mono: 'JetBrains Mono', 'Space Mono', 'Fira Code', monospace;
+
+  --bg-base: #12161A;
+  --bg-surface: #16191C;
+  --bg-raised: #1C2128;
+
+  --border-default: 1px solid rgba(255, 255, 255, 0.15);
+  --border-active: 1px solid #FFB000;
+  --border-success: 1px solid #4A5D23;
+
+  --color-amber: #FFB000;
+  --color-green: #4A5D23;
+  --color-error: #C0392B;
+
+  --text-primary: #E8EAF0;
+  --text-secondary: #8A8F9E;
+  --text-dim: #4A4F5E;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  --radius: 2px;
+}
