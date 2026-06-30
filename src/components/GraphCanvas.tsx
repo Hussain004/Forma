@@ -126,10 +126,11 @@ const IO_OPS = new Set(['Input', 'Output'])
 interface GraphCanvasProps {
   onnxNodes: OnnxNode[]
   onnxEdges: OnnxEdge[]
+  selectedNodeId: string | null
   onNodeSelect: (nodeId: string) => void
 }
 
-function toFlowGraph(onnxNodes: OnnxNode[], onnxEdges: OnnxEdge[]): {
+function toFlowGraph(onnxNodes: OnnxNode[], onnxEdges: OnnxEdge[], selectedNodeId: string | null): {
   nodes: Node[]
   edges: Edge[]
 } {
@@ -139,6 +140,7 @@ function toFlowGraph(onnxNodes: OnnxNode[], onnxEdges: OnnxEdge[]): {
       id: n.id,
       type: isIO ? 'io' : 'operator',
       position: { x: 0, y: 0 },
+      selected: n.id === selectedNodeId,
       data: isIO
         ? { label: n.outputs[0] ?? n.inputs[0] ?? n.opType }
         : { opType: n.opType, paramCount: n.paramCount },
@@ -169,10 +171,10 @@ function toFlowGraph(onnxNodes: OnnxNode[], onnxEdges: OnnxEdge[]): {
   return { nodes: applyDagreLayout(rawNodes, edges), edges }
 }
 
-export function GraphCanvas({ onnxNodes, onnxEdges, onNodeSelect }: GraphCanvasProps) {
+export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect }: GraphCanvasProps) {
   const computed = useMemo(
-    () => toFlowGraph(onnxNodes, onnxEdges),
-    [onnxNodes, onnxEdges],
+    () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId),
+    [onnxNodes, onnxEdges, selectedNodeId],
   )
 
   const [nodes, setNodes, onNodesChange] = useNodesState(computed.nodes)

@@ -1,23 +1,33 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ModelDropzone } from './components/ModelDropzone'
 import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
 import { useOnnxWorker } from './hooks/useOnnxWorker'
+import { toSelectableGraph, selectNode, deselectAll, type SelectableGraph } from './lib/graphUtils'
 import type { OnnxNode } from './lib/onnxTypes'
 import './index.css'
 
 function App() {
   const { loadModel, graph, status, error, progress } = useOnnxWorker()
-  const [selectedNode, setSelectedNode] = useState<OnnxNode | null>(null)
+  const [selectableGraph, setSelectableGraph] = useState<SelectableGraph | null>(null)
+
+  // Convert incoming OnnxGraph to SelectableGraph whenever graph changes.
+  useEffect(() => {
+    setSelectableGraph(graph ? toSelectableGraph(graph) : null)
+  }, [graph])
+
+  const selectedNode: OnnxNode | null =
+    selectableGraph?.nodes.find((n) => n.selected) ?? null
+
+  const selectedNodeId: string | null = selectedNode?.id ?? null
 
   const handleModelLoaded = (buffer: ArrayBuffer, filename: string) => {
-    setSelectedNode(null)
+    setSelectableGraph(null)
     loadModel(buffer, filename)
   }
 
   const handleNodeSelect = (nodeId: string) => {
-    const node = graph?.nodes.find((n) => n.id === nodeId) ?? null
-    setSelectedNode(node)
+    setSelectableGraph((sg) => sg ? selectNode(deselectAll(sg), nodeId) : sg)
   }
 
   const dropzoneStatus =
@@ -35,10 +45,15 @@ function App() {
           progressLabel={progress?.stage ?? null}
         />
       )}
-      {status === 'ready' && graph && (
+      {status === 'ready' && selectableGraph && (
         <>
           <div style={{ flex: 1, height: '100%' }}>
-            <GraphCanvas onnxNodes={graph.nodes} onnxEdges={graph.edges} onNodeSelect={handleNodeSelect} />
+            <GraphCanvas
+              onnxNodes={selectableGraph.nodes}
+              onnxEdges={selectableGraph.edges}
+              selectedNodeId={selectedNodeId}
+              onNodeSelect={handleNodeSelect}
+            />
           </div>
           <div style={{ width: 280, borderLeft: '1px solid rgba(255,255,255,0.1)', height: '100%' }}>
             <LayerInspector node={selectedNode} />
