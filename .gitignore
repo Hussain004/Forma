@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# WASM runtime files (copied from node_modules by prebuild script)
+public/ort-wasm-simd-threaded.*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

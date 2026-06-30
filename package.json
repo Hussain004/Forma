@@ -4,7 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "copy-ort-wasm": "cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.* public/",
+    "predev": "npm run copy-ort-wasm",
     "dev": "vite",
+    "prebuild": "npm run copy-ort-wasm",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",

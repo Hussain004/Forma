@@ -2,7 +2,7 @@ import * as ort from 'onnxruntime-web'
 import { parseOnnxGraph } from '../lib/onnxParser'
 import type { OnnxGraph } from '../lib/onnxTypes'
 
-ort.env.wasm.wasmPaths = '/node_modules/onnxruntime-web/dist/'
+ort.env.wasm.wasmPaths = '/'
 
 type WorkerCommand =
   | { type: 'LOAD_MODEL'; payload: { buffer: ArrayBuffer; filename: string } }
