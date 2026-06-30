@@ -14,7 +14,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
 [![Version](https://img.shields.io/badge/version-1.0.0-3b82f6.svg)](https://github.com/Hussain004/Forma/releases)
 
-[**→ Live Demo**](https://forma.vercel.app) · [Report Bug](https://github.com/Hussain004/Forma/issues) · [Request Feature](https://github.com/Hussain004/Forma/issues)
+[**→ Live Demo**](https://forma-ml.vercel.app) · [Report Bug](https://github.com/Hussain004/Forma/issues) · [Request Feature](https://github.com/Hussain004/Forma/issues)
 
 </div>
 
@@ -42,7 +42,7 @@ The one popular visual tool, Netron, is read-only. It shows you the graph; you c
 
 ## Demo
 
-A live demo is available at [**forma.vercel.app**](https://forma.vercel.app). Drag any `.onnx` model file onto the canvas and the graph renders immediately. A recorded walkthrough is planned for the v1.1 release.
+A live demo is available at [**forma-ml.vercel.app**](https://forma-ml.vercel.app). Drag any `.onnx` model file onto the canvas and the graph renders immediately. A recorded walkthrough is planned for the v1.1 release.
 
 ---
 
@@ -108,7 +108,7 @@ A condensed feature list is below. Detailed release notes will live in [CHANGELO
 
 ### Use the Live Demo
 
-1. Open [**forma.vercel.app**](https://forma.vercel.app)
+1. Open [**forma-ml.vercel.app**](https://forma-ml.vercel.app)
 2. Drag any `.onnx` model file onto the canvas
 3. Click any graph node to inspect it in the Layer Inspector panel
 

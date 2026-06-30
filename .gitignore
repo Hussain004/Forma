@@ -15,6 +15,9 @@ dist-ssr
 # WASM runtime files (copied from node_modules by prebuild script)
 public/ort-wasm-simd-threaded.*
 
+# Implementation planning document
+FORMA_IMPLEMENTATION.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
