@@ -29,3 +29,31 @@
 
   --radius: 2px;
 }
+
+/* React Flow Controls: override default white theme */
+.react-flow__controls {
+  background: #16191C !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+
+.react-flow__controls-button {
+  background: #16191C !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #8A8F9E !important;
+  fill: #8A8F9E !important;
+}
+
+.react-flow__controls-button:hover {
+  background: #1C2128 !important;
+  fill: #FFB000 !important;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+
+.react-flow__controls-button svg {
+  fill: inherit !important;
+}

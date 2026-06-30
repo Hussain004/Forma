@@ -18,6 +18,9 @@ public/ort-wasm-simd-threaded.*
 # Implementation planning document
 FORMA_IMPLEMENTATION.md
 
+# Local test models (not committed)
+test_files/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
