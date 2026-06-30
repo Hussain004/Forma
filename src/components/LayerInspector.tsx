@@ -63,7 +63,7 @@ function sensitivityColor(params: number): string {
   if (params > 10_000_000) return '#C0392B'
   if (params > 1_000_000)  return '#E67E22'
   if (params > 100_000)    return '#FFB000'
-  return '#4A5D23'
+  return '#52C57A'
 }
 
 export function LayerInspector({ node }: LayerInspectorProps) {

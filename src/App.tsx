@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ModelDropzone } from './components/ModelDropzone'
 import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
@@ -46,9 +46,9 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, onBenchmark,
       <span>{formatNumber(totalParams)} PARAMS</span>
       <span>{totalSizeMB.toFixed(1)} MB</span>
       <span>{nodeCount} NODES</span>
-      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
         {benchmarkLabel && (
-          <span style={{ color: '#4A5D23' }}>{benchmarkLabel}</span>
+          <span style={{ color: 'var(--color-green)' }}>{benchmarkLabel}</span>
         )}
         <button
           onClick={onBenchmark}
@@ -93,6 +93,30 @@ function App() {
   const { loadModel, runBenchmark, graph, status, error, progress, benchmarkResult } = useOnnxWorker()
   const [selectableGraph, setSelectableGraph] = useState<SelectableGraph | null>(null)
   const [showDropzone, setShowDropzone] = useState(true)
+  const [panelWidth, setPanelWidth] = useState(280)
+  const isResizing = useRef(false)
+  const resizeStartX = useRef(0)
+  const resizeStartWidth = useRef(0)
+
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizing.current = true
+    resizeStartX.current = e.clientX
+    resizeStartWidth.current = panelWidth
+
+    const onMove = (ev: MouseEvent) => {
+      if (!isResizing.current) return
+      const delta = resizeStartX.current - ev.clientX
+      setPanelWidth(Math.max(180, Math.min(600, resizeStartWidth.current + delta)))
+    }
+    const onUp = () => {
+      isResizing.current = false
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
 
   useEffect(() => {
     setSelectableGraph(graph ? toSelectableGraph(graph) : null)
@@ -136,6 +160,7 @@ function App() {
             status={dropzoneStatus}
             error={error}
             progressLabel={progress?.stage ?? null}
+            progressPercent={progress?.percent ?? null}
           />
         </div>
       )}
@@ -159,8 +184,25 @@ function App() {
                 onNodeSelect={handleNodeSelect}
               />
             </div>
-            <div style={{ width: 280, borderLeft: '1px solid rgba(255,255,255,0.1)', height: '100%' }}>
-              <LayerInspector node={selectedNode} />
+            <div style={{ width: panelWidth, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.1)', height: '100%', position: 'relative', display: 'flex' }}>
+              <div
+                onMouseDown={handleResizeStart}
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 4,
+                  cursor: 'col-resize',
+                  zIndex: 1,
+                  background: 'transparent',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,176,0,0.25)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+              />
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <LayerInspector node={selectedNode} />
+              </div>
             </div>
           </div>
         </>

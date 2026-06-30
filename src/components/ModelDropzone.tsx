@@ -5,6 +5,7 @@ interface ModelDropzoneProps {
   status: 'idle' | 'loading' | 'ready' | 'error'
   error?: string | null
   progressLabel?: string | null
+  progressPercent?: number | null
 }
 
 function Crosshair() {
@@ -20,7 +21,7 @@ function Crosshair() {
   )
 }
 
-export function ModelDropzone({ onModelLoaded, status, error, progressLabel }: ModelDropzoneProps) {
+export function ModelDropzone({ onModelLoaded, status, error, progressLabel, progressPercent }: ModelDropzoneProps) {
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -85,16 +86,37 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel }: M
       />
 
       {status === 'loading' && (
-        <span
-          style={{
-            color: 'var(--text-secondary)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.16em',
-            fontSize: 13,
-          }}
-        >
-          {progressLabel ?? 'Parsing model...'}
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <span
+            style={{
+              color: 'var(--text-secondary)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.16em',
+              fontSize: 13,
+            }}
+          >
+            {progressLabel ?? 'Parsing model...'}
+          </span>
+          <div
+            style={{
+              width: 240,
+              height: 2,
+              background: '#1C2128',
+              borderRadius: 2,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width: `${progressPercent ?? 0}%`,
+                background: '#FFB000',
+                borderRadius: 2,
+                transition: 'width 0.3s ease',
+              }}
+            />
+          </div>
+        </div>
       )}
 
       {status === 'error' && (

@@ -9,10 +9,10 @@
 
   --border-default: 1px solid rgba(255, 255, 255, 0.15);
   --border-active: 1px solid #FFB000;
-  --border-success: 1px solid #4A5D23;
+  --border-success: 1px solid #52C57A;
 
   --color-amber: #FFB000;
-  --color-green: #4A5D23;
+  --color-green: #52C57A;
   --color-error: #C0392B;
 
   --text-primary: #E8EAF0;
