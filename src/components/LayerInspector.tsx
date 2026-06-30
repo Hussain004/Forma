@@ -3,6 +3,7 @@ import { formatShape } from '../lib/onnxProtoParser'
 
 interface LayerInspectorProps {
   node: OnnxNode | null
+  onToggleExclude?: (nodeId: string) => void
 }
 
 const labelStyle: React.CSSProperties = {
@@ -66,7 +67,7 @@ function sensitivityColor(params: number): string {
   return '#52C57A'
 }
 
-export function LayerInspector({ node }: LayerInspectorProps) {
+export function LayerInspector({ node, onToggleExclude }: LayerInspectorProps) {
   if (!node) {
     return (
       <div
@@ -119,6 +120,28 @@ export function LayerInspector({ node }: LayerInspectorProps) {
           <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: sensitivityColor(node.paramCount), letterSpacing: '0.04em' }}>
             {sensitivityLabel(node.paramCount)}
           </span>
+        </div>
+      )}
+
+      {isCompute && (
+        <div style={{ ...rowStyle, alignItems: 'center' }}>
+          <span style={labelStyle}>EXCLUDED</span>
+          <button
+            onClick={() => onToggleExclude?.(node.id)}
+            style={{
+              background: 'none',
+              border: node.excluded ? '1px solid #FFB000' : '1px solid rgba(255,255,255,0.2)',
+              borderRadius: 2,
+              color: node.excluded ? '#FFB000' : 'var(--text-dim)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              letterSpacing: '0.06em',
+              padding: '2px 12px',
+              cursor: 'pointer',
+            }}
+          >
+            {node.excluded ? 'YES' : 'NO'}
+          </button>
         </div>
       )}
 

@@ -1,5 +1,6 @@
 import * as ort from 'onnxruntime-web'
 import { parseOnnxGraph } from '../lib/onnxParser'
+import { estimateInt8Size, compressionRatio } from '../lib/quantize'
 import type { OnnxGraph } from '../lib/onnxTypes'
 
 ort.env.wasm.wasmPaths = '/'
@@ -8,30 +9,38 @@ type WorkerCommand =
   | { type: 'LOAD_MODEL'; payload: { buffer: ArrayBuffer; filename: string } }
   | { type: 'RUN_INFERENCE'; payload: { inputs: Record<string, Float32Array>; shapes: Record<string, number[]> } }
   | { type: 'BENCHMARK'; payload: { runs: number } }
+  | { type: 'EXPORT' }
 
 type WorkerResponse =
   | { type: 'MODEL_LOADED'; payload: OnnxGraph }
   | { type: 'INFERENCE_RESULT'; payload: { outputs: Record<string, Float32Array> } }
   | { type: 'BENCHMARK_RESULT'; payload: { avgMs: number; minMs: number; maxMs: number; runs: number } }
+  | { type: 'QUANTIZE_ESTIMATE'; payload: { int8SizeMB: number; originalSizeMB: number; ratio: number } }
+  | { type: 'EXPORT_RESULT'; payload: ArrayBuffer }
   | { type: 'ERROR'; payload: string }
   | { type: 'PROGRESS'; payload: { stage: string; percent: number } }
 
 const ctx = self as unknown as {
   onmessage: ((event: MessageEvent<WorkerCommand>) => void) | null
-  postMessage: (message: WorkerResponse) => void
+  postMessage: (message: WorkerResponse, transfer?: Transferable[]) => void
 }
 
 let session: ort.InferenceSession | null = null
 let benchmarkInputShapes: Record<string, number[]> = {}
+let exportBuffer: ArrayBuffer | null = null
 
 ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
   const cmd = event.data
   try {
     if (cmd.type === 'LOAD_MODEL') {
+      exportBuffer = null
       ctx.postMessage({ type: 'PROGRESS', payload: { stage: 'Parsing graph', percent: 10 } })
 
       // Slice a copy for parsing; the original is transferred to InferenceSession
       const bufferForParsing = cmd.payload.buffer.slice(0)
+
+      // Keep a copy for the EXPORT command; the original is consumed by InferenceSession
+      exportBuffer = cmd.payload.buffer.slice(0)
 
       // Parse graph topology from raw protobuf (reliable, no WASM internals)
       const graph = parseOnnxGraph(bufferForParsing, cmd.payload.filename)
@@ -51,6 +60,11 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
 
       ctx.postMessage({ type: 'PROGRESS', payload: { stage: 'Ready', percent: 100 } })
       ctx.postMessage({ type: 'MODEL_LOADED', payload: graph })
+
+      const totalElemCount = graph.nodes.reduce((sum, n) => sum + n.paramCount, 0)
+      const int8SizeMB = estimateInt8Size(totalElemCount)
+      const ratio = compressionRatio(graph.totalSizeMB, totalElemCount)
+      ctx.postMessage({ type: 'QUANTIZE_ESTIMATE', payload: { int8SizeMB, originalSizeMB: graph.totalSizeMB, ratio } })
     } else if (cmd.type === 'RUN_INFERENCE') {
       if (!session) throw new Error('No model loaded')
       const feeds: Record<string, ort.Tensor> = {}
@@ -86,6 +100,11 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
       const minMs = Math.min(...times)
       const maxMs = Math.max(...times)
       ctx.postMessage({ type: 'BENCHMARK_RESULT', payload: { avgMs, minMs, maxMs, runs } })
+    } else if (cmd.type === 'EXPORT') {
+      if (!exportBuffer) throw new Error('No model loaded')
+      // Transfer the buffer back to the main thread. Slice it so the worker retains a copy.
+      const toSend = exportBuffer.slice(0)
+      ctx.postMessage({ type: 'EXPORT_RESULT', payload: toSend }, [toSend])
     }
   } catch (err) {
     ctx.postMessage({ type: 'ERROR', payload: (err as Error).message })

@@ -51,17 +51,32 @@ const handleStyle = {
   border: 'none',
 }
 
-type OperatorData = { opType: string; paramCount: number; shapeLabel: string }
-type IOData = { label: string; shapeLabel: string }
+type OperatorData = { opType: string; paramCount: number; shapeLabel: string; dimmed: boolean; excluded: boolean }
+type IOData = { label: string; shapeLabel: string; dimmed: boolean; excluded: boolean }
+
+const strikeStyle: React.CSSProperties = {
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  top: '50%',
+  height: 1,
+  background: '#FFFFFF',
+  pointerEvents: 'none',
+}
 
 function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
+  const opacity = data.excluded ? 0.5 : data.dimmed ? 0.25 : 1
+  const border = data.excluded
+    ? '1px solid rgba(255,255,255,0.08)'
+    : sensitivityBorder(data.paramCount, selected)
   return (
     <div
       style={{
+        position: 'relative',
         width: NODE_WIDTH,
         minHeight: NODE_HEIGHT,
         background: '#16191C',
-        border: sensitivityBorder(data.paramCount, selected),
+        border,
         borderRadius: 2,
         padding: '8px 12px',
         display: 'flex',
@@ -69,8 +84,10 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
         justifyContent: 'center',
         gap: 2,
         fontFamily: 'var(--font-mono)',
+        opacity,
       }}
     >
+      {data.excluded && <div style={strikeStyle} />}
       <Handle type="target" position={Position.Top} style={handleStyle} />
       <div style={{ color: '#E8EAF0', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {data.opType}
@@ -89,14 +106,18 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
 }
 
 function IONode({ data, selected }: NodeProps<Node<IOData>>) {
+  const opacity = data.excluded ? 0.5 : data.dimmed ? 0.25 : 1
   return (
     <div
       style={{
+        position: 'relative',
         width: NODE_WIDTH,
         minHeight: NODE_HEIGHT,
         background: '#1C2128',
-        border: selected ? '1px solid #FFB000' : '1px solid rgba(255,255,255,0.15)',
-        borderLeft: '2px solid #FFB000',
+        border: data.excluded
+          ? '1px solid rgba(255,255,255,0.08)'
+          : selected ? '1px solid #FFB000' : '1px solid rgba(255,255,255,0.15)',
+        borderLeft: data.excluded ? '1px solid rgba(255,255,255,0.08)' : '2px solid #FFB000',
         borderRadius: 2,
         padding: '8px 12px',
         display: 'flex',
@@ -104,8 +125,10 @@ function IONode({ data, selected }: NodeProps<Node<IOData>>) {
         justifyContent: 'center',
         gap: 2,
         fontFamily: 'var(--font-mono)',
+        opacity,
       }}
     >
+      {data.excluded && <div style={strikeStyle} />}
       <Handle type="target" position={Position.Top} style={handleStyle} />
       <div style={{ color: '#E8EAF0', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {data.label}
@@ -142,8 +165,8 @@ function toFlowGraph(onnxNodes: OnnxNode[], onnxEdges: OnnxEdge[], selectedNodeI
       position: { x: 0, y: 0 },
       selected: n.id === selectedNodeId,
       data: isIO
-        ? { label: n.outputs[0] ?? n.inputs[0] ?? n.opType, shapeLabel }
-        : { opType: n.opType, paramCount: n.paramCount, shapeLabel },
+        ? { label: n.outputs[0] ?? n.inputs[0] ?? n.opType, shapeLabel, dimmed: !!n.dimmed, excluded: !!n.excluded }
+        : { opType: n.opType, paramCount: n.paramCount, shapeLabel, dimmed: !!n.dimmed, excluded: !!n.excluded },
     }
   })
 

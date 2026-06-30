@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { OnnxGraph } from '../lib/onnxTypes'
 
-type Status = 'idle' | 'loading' | 'ready' | 'running' | 'benchmarking' | 'error'
+type Status = 'idle' | 'loading' | 'ready' | 'running' | 'benchmarking' | 'exporting' | 'error'
 
 export interface BenchmarkResult {
   avgMs: number
@@ -10,10 +10,18 @@ export interface BenchmarkResult {
   runs: number
 }
 
+export interface QuantizeEstimate {
+  int8SizeMB: number
+  originalSizeMB: number
+  ratio: number
+}
+
 type WorkerResponse =
   | { type: 'MODEL_LOADED'; payload: OnnxGraph }
   | { type: 'INFERENCE_RESULT'; payload: { outputs: Record<string, Float32Array> } }
   | { type: 'BENCHMARK_RESULT'; payload: BenchmarkResult }
+  | { type: 'QUANTIZE_ESTIMATE'; payload: QuantizeEstimate }
+  | { type: 'EXPORT_RESULT'; payload: ArrayBuffer }
   | { type: 'ERROR'; payload: string }
   | { type: 'PROGRESS'; payload: { stage: string; percent: number } }
 
@@ -24,11 +32,13 @@ export function useOnnxWorker() {
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<{ stage: string; percent: number } | null>(null)
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null)
+  const [quantizeEstimate, setQuantizeEstimate] = useState<QuantizeEstimate | null>(null)
 
   const inferenceResolverRef = useRef<((outputs: Record<string, Float32Array>) => void) | null>(null)
   const inferenceRejecterRef = useRef<((err: Error) => void) | null>(null)
   const benchmarkResolverRef = useRef<((r: BenchmarkResult) => void) | null>(null)
   const benchmarkRejecterRef = useRef<((err: Error) => void) | null>(null)
+  const exportResolve = useRef<((buf: ArrayBuffer) => void) | null>(null)
 
   useEffect(() => {
     const worker = new Worker(new URL('../workers/onnxWorker.ts', import.meta.url), { type: 'module' })
@@ -41,6 +51,14 @@ export function useOnnxWorker() {
         setStatus('ready')
         setProgress(null)
         setBenchmarkResult(null)
+      } else if (msg.type === 'QUANTIZE_ESTIMATE') {
+        setQuantizeEstimate(msg.payload)
+      } else if (msg.type === 'EXPORT_RESULT') {
+        if (exportResolve.current) {
+          exportResolve.current(msg.payload)
+          exportResolve.current = null
+        }
+        setStatus('ready')
       } else if (msg.type === 'INFERENCE_RESULT') {
         inferenceResolverRef.current?.(msg.payload.outputs)
         inferenceResolverRef.current = null
@@ -74,6 +92,7 @@ export function useOnnxWorker() {
     setError(null)
     setGraph(null)
     setBenchmarkResult(null)
+    setQuantizeEstimate(null)
     workerRef.current?.postMessage({ type: 'LOAD_MODEL', payload: { buffer, filename } }, [buffer])
   }, [])
 
@@ -97,5 +116,14 @@ export function useOnnxWorker() {
     })
   }, [])
 
-  return { loadModel, runInference, runBenchmark, graph, status, error, progress, benchmarkResult }
+  const exportModel = useCallback((): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+      if (!workerRef.current) { reject(new Error('No worker')); return }
+      exportResolve.current = resolve
+      setStatus('exporting')
+      workerRef.current.postMessage({ type: 'EXPORT' })
+    })
+  }, [])
+
+  return { loadModel, runInference, runBenchmark, exportModel, graph, status, error, progress, benchmarkResult, quantizeEstimate }
 }

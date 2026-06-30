@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ModelDropzone } from './components/ModelDropzone'
 import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
 import { useOnnxWorker } from './hooks/useOnnxWorker'
-import { toSelectableGraph, selectNode, deselectAll, type SelectableGraph } from './lib/graphUtils'
+import { toSelectableGraph, selectNode, deselectAll, filterGraph, excludeNode, includeNode, type SelectableGraph } from './lib/graphUtils'
 import type { OnnxNode } from './lib/onnxTypes'
 import './index.css'
 
@@ -18,12 +18,14 @@ interface StatsBarProps {
   totalParams: number
   totalSizeMB: number
   nodeCount: number
+  filterQuery: string
+  onFilterChange: (value: string) => void
   onBenchmark: () => void
   benchmarkLabel: string | null
   onReset: () => void
 }
 
-function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, onBenchmark, benchmarkLabel, onReset }: StatsBarProps) {
+function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, filterQuery, onFilterChange, onBenchmark, benchmarkLabel, onReset }: StatsBarProps) {
   return (
     <div style={{
       height: 36,
@@ -46,6 +48,23 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, onBenchmark,
       <span>{formatNumber(totalParams)} PARAMS</span>
       <span>{totalSizeMB.toFixed(1)} MB</span>
       <span>{nodeCount} NODES</span>
+      <input
+        type="text"
+        value={filterQuery}
+        onChange={(e) => onFilterChange(e.target.value)}
+        placeholder="FILTER NODES"
+        style={{
+          background: 'transparent',
+          border: '1px solid rgba(255,255,255,0.15)',
+          color: 'var(--text-secondary)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 11,
+          letterSpacing: '0.06em',
+          padding: '2px 8px',
+          width: 160,
+          borderRadius: 2,
+        }}
+      />
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
         {benchmarkLabel && (
           <span style={{ color: 'var(--color-green)' }}>{benchmarkLabel}</span>
@@ -92,6 +111,8 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, onBenchmark,
 function App() {
   const { loadModel, runBenchmark, graph, status, error, progress, benchmarkResult } = useOnnxWorker()
   const [selectableGraph, setSelectableGraph] = useState<SelectableGraph | null>(null)
+  const [filterQuery, setFilterQuery] = useState('')
+  const [excludedNodeIds, setExcludedNodeIds] = useState<Set<string>>(new Set())
   const [showDropzone, setShowDropzone] = useState(true)
   const [panelWidth, setPanelWidth] = useState(280)
   const isResizing = useRef(false)
@@ -120,10 +141,17 @@ function App() {
 
   useEffect(() => {
     setSelectableGraph(graph ? toSelectableGraph(graph) : null)
+    setFilterQuery('')
+    setExcludedNodeIds(new Set())
     if (graph) setShowDropzone(false)
   }, [graph])
 
-  const selectedNode: OnnxNode | null = selectableGraph?.nodes.find((n) => n.selected) ?? null
+  const filteredGraph = useMemo(
+    () => (selectableGraph ? filterGraph(selectableGraph, filterQuery) : null),
+    [selectableGraph, filterQuery],
+  )
+
+  const selectedNode: OnnxNode | null = filteredGraph?.nodes.find((n) => n.selected) ?? null
   const selectedNodeId: string | null = selectedNode?.id ?? null
 
   const handleModelLoaded = (buffer: ArrayBuffer, filename: string) => {
@@ -133,6 +161,17 @@ function App() {
 
   const handleNodeSelect = (nodeId: string) => {
     setSelectableGraph((sg) => sg ? selectNode(deselectAll(sg), nodeId) : sg)
+  }
+
+  const handleToggleExclude = (nodeId: string) => {
+    const willExclude = !excludedNodeIds.has(nodeId)
+    setExcludedNodeIds((prev) => {
+      const next = new Set(prev)
+      if (willExclude) next.add(nodeId)
+      else next.delete(nodeId)
+      return next
+    })
+    setSelectableGraph((sg) => sg ? (willExclude ? excludeNode(sg, nodeId) : includeNode(sg, nodeId)) : sg)
   }
 
   const handleReset = () => {
@@ -145,11 +184,11 @@ function App() {
     : status === 'benchmarking' ? 'Benchmarking...' : null
 
   const dropzoneStatus =
-    status === 'running' || status === 'benchmarking' ? 'loading' :
+    status === 'running' || status === 'benchmarking' || status === 'exporting' ? 'loading' :
     status === 'ready' ? 'ready' :
     status
 
-  const isReady = status === 'ready' || status === 'benchmarking'
+  const isReady = status === 'ready' || status === 'benchmarking' || status === 'exporting'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', background: 'var(--bg-base)', overflow: 'hidden' }}>
@@ -164,13 +203,15 @@ function App() {
           />
         </div>
       )}
-      {isReady && selectableGraph && !showDropzone && (
+      {isReady && filteredGraph && !showDropzone && (
         <>
           <StatsBar
             modelName={graph?.modelName ?? ''}
             totalParams={graph?.totalParams ?? 0}
             totalSizeMB={graph?.totalSizeMB ?? 0}
-            nodeCount={selectableGraph.nodes.filter(n => n.opType !== 'Input' && n.opType !== 'Output').length}
+            nodeCount={filteredGraph.nodes.filter(n => n.opType !== 'Input' && n.opType !== 'Output').length}
+            filterQuery={filterQuery}
+            onFilterChange={setFilterQuery}
             onBenchmark={() => runBenchmark(10)}
             benchmarkLabel={benchmarkLabel}
             onReset={handleReset}
@@ -178,8 +219,8 @@ function App() {
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
             <div style={{ flex: 1, height: '100%' }}>
               <GraphCanvas
-                onnxNodes={selectableGraph.nodes}
-                onnxEdges={selectableGraph.edges}
+                onnxNodes={filteredGraph.nodes}
+                onnxEdges={filteredGraph.edges}
                 selectedNodeId={selectedNodeId}
                 onNodeSelect={handleNodeSelect}
               />
@@ -201,7 +242,7 @@ function App() {
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               />
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <LayerInspector node={selectedNode} />
+                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} />
               </div>
             </div>
           </div>

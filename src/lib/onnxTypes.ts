@@ -12,6 +12,8 @@ export interface OnnxNode {
   estimatedSizeMB: number
   inputShapes?: OnnxDim[][]
   outputShapes?: OnnxDim[][]
+  dimmed?: boolean
+  excluded?: boolean
 }
 
 export interface OnnxEdge {
