@@ -331,7 +331,12 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             letterSpacing: '0.04em',
           }}
         >
-          <div style={{ color: '#FFB000', marginBottom: 4 }}>{hoveredNode.opType}</div>
+          <div style={{ color: '#FFB000', marginBottom: 2 }}>{hoveredNode.opType}</div>
+          {hoveredNode.name && (
+            <div style={{ color: 'var(--text-dim)', fontSize: 9, letterSpacing: '0.04em', marginBottom: 4, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {hoveredNode.name}
+            </div>
+          )}
           {hoveredNode.paramCount > 0 && (
             <div style={{ color: 'var(--text-secondary)', fontSize: 10 }}>
               {hoveredNode.paramCount.toLocaleString()} params

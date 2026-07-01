@@ -1,4 +1,4 @@
-import type { OnnxNode } from '../lib/onnxTypes'
+import type { OnnxNode, ModelMetadata } from '../lib/onnxTypes'
 import { formatShape } from '../lib/onnxProtoParser'
 import { opCategoryColor } from '../lib/graphUtils'
 
@@ -6,7 +6,7 @@ interface LayerInspectorProps {
   node: OnnxNode | null
   onToggleExclude?: (nodeId: string) => void
   quantizeEstimate?: { ratio: number } | null
-  modelStats?: { opCounts: Record<string, number>; totalNodes: number; graphDepth?: number } | null
+  modelStats?: { opCounts: Record<string, number>; totalNodes: number; graphDepth?: number; metadata?: ModelMetadata } | null
   multiSelection?: {
     nodes: OnnxNode[]
     totalParams: number
@@ -201,6 +201,24 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
         <div style={{ color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 10, marginBottom: 12 }}>
           Model Summary
         </div>
+        {modelStats.metadata?.producerName && (
+          <div style={rowStyle}>
+            <span style={labelStyle}>PRODUCER</span>
+            <span style={valueStyle}>{modelStats.metadata.producerName}{modelStats.metadata.producerVersion ? ` ${modelStats.metadata.producerVersion}` : ''}</span>
+          </div>
+        )}
+        {modelStats.metadata?.opsetVersion ? (
+          <div style={rowStyle}>
+            <span style={labelStyle}>OPSET</span>
+            <span style={valueStyle}>{modelStats.metadata.opsetVersion}</span>
+          </div>
+        ) : null}
+        {modelStats.metadata?.irVersion ? (
+          <div style={rowStyle}>
+            <span style={labelStyle}>IR VER</span>
+            <span style={valueStyle}>{modelStats.metadata.irVersion}</span>
+          </div>
+        ) : null}
         <div style={rowStyle}>
           <span style={labelStyle}>TOTAL NODES</span>
           <span style={valueStyle}>{modelStats.totalNodes.toLocaleString()}</span>
@@ -287,6 +305,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
         </button>
       </div>
       <Row label="OP TYPE" value={node.opType} />
+      {node.name && <Row label="NODE NAME" value={node.name} />}
       <Row label="PARAMETERS" value={node.paramCount.toLocaleString()} />
       <Row label="EST. SIZE" value={`${node.estimatedSizeMB.toFixed(3)} MB`} />
       {node.estimatedSizeMB > 0 && quantizeEstimate && quantizeEstimate.ratio > 0 && (

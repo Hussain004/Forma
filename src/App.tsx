@@ -299,8 +299,9 @@ function App() {
       opCounts,
       totalNodes: selectableGraph.nodes.filter(n => n.opType !== 'Input' && n.opType !== 'Output').length,
       graphDepth: computeGraphDepth(selectableGraph),
+      metadata: graph?.metadata,
     }
-  }, [selectableGraph])
+  }, [selectableGraph, graph])
 
   const selectedNode: OnnxNode | null = selectedNodeId
     ? filteredGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null

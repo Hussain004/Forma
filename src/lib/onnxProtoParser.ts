@@ -10,7 +10,16 @@ const WIRE_LEN = 2
 const WIRE_32BIT = 5
 
 // ModelProto fields
+const MODEL_IR_VERSION = 1
+const MODEL_PRODUCER_NAME = 2
+const MODEL_PRODUCER_VERSION = 3
+const MODEL_DOC_STRING = 6
 const MODEL_GRAPH = 7
+const MODEL_OPSET_IMPORT = 8
+
+// OperatorSetIdProto fields
+const OPSET_DOMAIN = 1
+const OPSET_VERSION = 2
 
 // GraphProto fields
 const GRAPH_NODE = 1
@@ -75,6 +84,14 @@ const DATA_TYPE_BYTES: Record<number, number> = {
   16: 2, // BFLOAT16
 }
 
+export interface ModelMetadata {
+  irVersion: number
+  producerName: string
+  producerVersion: string
+  opsetVersion: number   // ONNX standard domain opset (domain="" or "ai.onnx")
+  docString: string
+}
+
 export type OnnxDim = { value: number } | { param: string }
 
 export interface ParsedValueInfo {
@@ -105,7 +122,8 @@ export interface ParsedGraph {
   initializers: ParsedInitializer[]
   inputs: ParsedValueInfo[]
   outputs: ParsedValueInfo[]
-  valueInfo: ParsedValueInfo[]  // intermediate tensor shapes
+  valueInfo: ParsedValueInfo[]
+  metadata: ModelMetadata
 }
 
 // ---- Low-level reader ----
@@ -423,12 +441,41 @@ function parseGraph(r: ProtoReader): ParsedGraph {
   return { name: graphName, nodes, initializers, inputs, outputs, valueInfo }
 }
 
+function parseOpsetImport(r: ProtoReader): { domain: string; version: number } {
+  let domain = ''
+  let version = 0
+  while (!r.done) {
+    const tag = r.readTag()
+    if (!tag) break
+    if (tag.wire === WIRE_LEN) {
+      const len = r.readVarint()
+      if (tag.field === OPSET_DOMAIN) domain = r.readString(len)
+      else r.skip(len)
+    } else if (tag.wire === WIRE_VARINT) {
+      const v = r.readVarint()
+      if (tag.field === OPSET_VERSION) version = v
+    } else {
+      r.skipField(tag.wire)
+    }
+  }
+  return { domain, version }
+}
+
+const DEFAULT_METADATA: ModelMetadata = {
+  irVersion: 0, producerName: '', producerVersion: '', opsetVersion: 0, docString: '',
+}
+
 // ---- Public API ----
 
 export function parseOnnxProto(buffer: ArrayBuffer): ParsedGraph {
   const buf = new Uint8Array(buffer)
   const r = new ProtoReader(buf)
   let graph: ParsedGraph | null = null
+  let irVersion = 0
+  let producerName = ''
+  let producerVersion = ''
+  let docString = ''
+  let opsetVersion = 0
 
   while (!r.done) {
     const tag = r.readTag()
@@ -437,15 +484,31 @@ export function parseOnnxProto(buffer: ArrayBuffer): ParsedGraph {
       const len = r.readVarint()
       if (tag.field === MODEL_GRAPH) {
         graph = parseGraph(r.subReader(len))
+      } else if (tag.field === MODEL_PRODUCER_NAME) {
+        producerName = r.readString(len)
+      } else if (tag.field === MODEL_PRODUCER_VERSION) {
+        producerVersion = r.readString(len)
+      } else if (tag.field === MODEL_DOC_STRING) {
+        docString = r.readString(len)
+      } else if (tag.field === MODEL_OPSET_IMPORT) {
+        const op = parseOpsetImport(r.subReader(len))
+        if ((op.domain === '' || op.domain === 'ai.onnx') && op.version > 0) {
+          opsetVersion = op.version
+        }
       } else {
         r.skip(len)
       }
+    } else if (tag.wire === WIRE_VARINT) {
+      const v = r.readVarint()
+      if (tag.field === MODEL_IR_VERSION) irVersion = v
     } else {
       r.skipField(tag.wire)
     }
   }
 
-  return graph ?? { name: '', nodes: [], initializers: [], inputs: [], outputs: [], valueInfo: [] }
+  const metadata: ModelMetadata = { irVersion, producerName, producerVersion, opsetVersion, docString }
+  if (!graph) return { name: '', nodes: [], initializers: [], inputs: [], outputs: [], valueInfo: [], metadata: DEFAULT_METADATA }
+  return { ...graph, metadata }
 }
 
 export function formatShape(dims: OnnxDim[] | undefined): string {
