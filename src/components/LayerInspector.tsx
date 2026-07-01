@@ -270,9 +270,9 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           onClick={handleCopy}
           style={{
             background: 'none',
-            border: '1px solid rgba(255,255,255,0.15)',
+            border: '1px solid rgba(255,176,0,0.4)',
             borderRadius: 2,
-            color: 'var(--text-dim)',
+            color: '#FFB000',
             fontFamily: 'var(--font-mono)',
             fontSize: 10,
             letterSpacing: '0.06em',

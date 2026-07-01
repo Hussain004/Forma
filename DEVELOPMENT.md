@@ -5,11 +5,12 @@ New sessions should read this before touching any code.
 
 ---
 
-## Current state: v2 merged to master
+## Current state: v0.8.0 merged to master
 
 Vercel deployment: https://forma-ml.vercel.app
 GitHub: https://github.com/Hussain004/Forma
-Branch strategy: feature work on versioned branches (v2, v3, ...), PR to master when done.
+Branch strategy: one branch per version (v0.5, v0.6, ...), PR to master when done.
+Releases: tagged on master and published as GitHub releases after each merge.
 
 ---
 
@@ -18,18 +19,18 @@ Branch strategy: feature work on versioned branches (v2, v3, ...), PR to master 
 Forma is a fully browser-native SPA. There is no backend. Every operation runs in the browser.
 
 ```
-App.tsx  (React, main thread)
-  |-- ModelDropzone      drag-and-drop, FileReader -> ArrayBuffer
-  |-- StatsBar           model name / params / size / node count / benchmark result
-  |-- GraphCanvas        React Flow + dagre layout, OperatorNode + IONode
-  |-- LayerInspector     selected node detail panel
+App.tsx  (React 19, main thread)
+  |-- ModelDropzone        drag-and-drop, FileReader -> ArrayBuffer
+  |-- StatsBar             model name / params / size / node count / layout toggle / benchmark
+  |-- GraphCanvas          React Flow + dagre layout, MiniMap, JumpController, hover tooltip
+  |-- LayerInspector       selected node detail, multi-select aggregate, model summary histogram
   |
-  useOnnxWorker hook     manages the Web Worker lifecycle
+  useOnnxWorker hook       manages the Web Worker lifecycle
   |
   onnxWorker.ts (Web Worker, off-main-thread)
-    |-- onnxProtoParser  binary protobuf parse of the raw ArrayBuffer
-    |-- onnxParser       builds OnnxGraph (nodes, edges, params) from proto result
-    |-- onnxruntime-web  InferenceSession.create() for WASM inference + benchmark
+    |-- onnxProtoParser    binary protobuf parse of the raw ArrayBuffer
+    |-- onnxParser         builds OnnxGraph (nodes, edges, params, graphInputs) from proto result
+    |-- onnxruntime-web    InferenceSession.create() for WASM inference + benchmark + export
 ```
 
 Key architectural decisions:
@@ -39,14 +40,14 @@ Key architectural decisions:
   if the WASM session creation is slow or fails.
 - ArrayBuffer is sliced before posting to the worker so both the parser and the session
   can read the same bytes (postMessage transfers destroy the sender's copy).
+- useReactFlow() must be called inside a child of <ReactFlow>, not in the same component.
+  Solution: JumpController component placed as a child inside the ReactFlow JSX tree.
 
 ---
 
 ## What has been implemented
 
-### v1 (bootstrap + MVP visualization)
-
-Commits: e0e04d5 through 4e4c6c3 on master.
+### v0.1 (bootstrap + MVP visualization)
 
 - Vite 8 + React 19 + TypeScript SPA scaffold
 - vercel.json: SPA rewrite rules + COOP/COEP headers (required for SharedArrayBuffer)
@@ -54,104 +55,102 @@ Commits: e0e04d5 through 4e4c6c3 on master.
 - GraphCanvas: React Flow + dagre top-down layout, custom OperatorNode + IONode
 - LayerInspector: op type, param count, estimated size rows
 - useOnnxWorker hook: LOAD_MODEL / RUN_INFERENCE / PROGRESS / ERROR protocol
-- onnxWorker.ts: Web Worker with onnxruntime-web
-- onnxParser.ts (v1): used unreliable session.handler?.model?.graph?.node internals
-  - FALLBACK BUG: most models collapsed to a single "Model" node (fixed in v2)
 - Theme: Avionics Blueprint CSS custom properties, JetBrains Mono, 4/8px grid
-- WASM path fix: prebuild/predev script copies ort-wasm-simd-threaded.* to public/,
-  ort.env.wasm.wasmPaths = '/' (production fix)
+- WASM path fix: prebuild/predev script copies ort-wasm-simd-threaded.* to public/
 - Tests: 46 passing (graph.test.ts, onnx.test.ts, app.test.tsx)
 
-### v2 (proper parser, sensitivity coloring, benchmark, Controls theme)
+### v0.2 (proper parser, sensitivity coloring, benchmark)
 
-Branch: v2, merged via PR #1. Commits: 2caa159.
+- Schema-aware binary protobuf decoder (src/lib/onnxProtoParser.ts)
+  - Decodes ModelProto -> GraphProto -> NodeProto / TensorProto / ValueInfoProto
+  - Wire types: VARINT (0), 64-bit (1), length-delimited (2), 32-bit (5)
+  - ParsedValueInfo includes elemType (ONNX data type: 1=float32, 7=int64, etc.)
+- Sensitivity coloring: OperatorNode border color by paramCount tier
+- Tensor shape annotations on graph nodes and in LayerInspector
+- Stats bar: model filename, total params, size MB, node count
+- Benchmark button: BENCHMARK worker command, shows avg/min/max ms
+- React Flow Controls theme overrides in theme.css
+- Tests: 60 passing
 
-**Core fix: ONNX protobuf parser (src/lib/onnxProtoParser.ts)**
-- Schema-aware binary protobuf decoder, no WASM internals dependency
-- Decodes ModelProto -> GraphProto -> NodeProto / TensorProto / ValueInfoProto
-- Wire types handled: VARINT (0), 64-bit (1), length-delimited (2), 32-bit (5)
-- Extracts: node op_type / inputs / outputs, initializer name / dims / elemCount / sizeMB,
-  graph input and output ValueInfoProto with tensor shapes
-- Packed int64 dims handled (proto3 default for repeated int64)
-- parseOnnxGraph now takes (buffer: ArrayBuffer, modelName: string) - no session needed
-- Per-node param count = sum of elemCount for initializers whose name appears in node.inputs
-- Tested against sageconv_Opset18.onnx (24 nodes, 20K params) and
-  tagconv_Opset17.onnx (53 nodes, 40K params)
+### v0.3 (filter, exclusion, INT8 estimate, export)
 
-**Sensitivity coloring (GraphCanvas + LayerInspector)**
-- OperatorNode border color based on paramCount:
-  - < 100K:  rgba(255,255,255,0.15) (default)
-  - 100K-1M: dim amber #8A7A00
-  - 1M-10M:  orange #E67E22
-  - > 10M:   red #C0392B
-- LayerInspector shows SENSITIVITY row: MINIMAL / LOW / MEDIUM / HIGH with matching color
+- Graph filter: search box dims non-matching nodes in real time
+- Node exclusion: mark individual nodes as excluded; strikethrough styling applied
+- INT8 size estimate: QUANTIZE_ESTIMATE message from worker, shown in stats bar and per-node
+- Model export: EXPORT worker command, Blob + URL.createObjectURL download trigger
+  - Filename strips original extension cleanly (model_export.onnx, not model.onnx_export.onnx)
+- quantize.ts: estimateInt8Size(), compressionRatio(), formatQuantizeEstimate()
+- Tests: ~90 passing (v3.test.ts added)
 
-**Tensor shapes**
-- Parsed from ValueInfoProto in GraphProto.input and GraphProto.output
-- OnnxNode gained inputShapes?: OnnxDim[][] and outputShapes?: OnnxDim[][]
-- OnnxDim = {value: number} | {param: string} (handles symbolic dims like "batch_size")
-- formatShape() renders as "[1, 3, 224, 224]" or "[batch_size, 512]"
-- Shown as small dim label on graph nodes and as labeled sections in LayerInspector
+### v0.4 (INT8 estimate UI polish, download hardening)
 
-**Stats bar (App.tsx)**
-- One-line bar above the canvas: model filename, total params, estimated size MB, node count
-- Benchmark button: sends BENCHMARK command to worker (10 runs), shows avg/min/max ms
-- Load new button: returns to the dropzone without page reload
+- formatQuantizeEstimate() display helper with toFixed(1) rounding
+- Export promise rejection propagated correctly from worker ERROR message
+- Download button in stats bar with full lifecycle (postMessage -> EXPORT_RESULT -> Blob)
+- Tests: ~110 passing (v4.test.ts added)
 
-**React Flow Controls theme (theme.css)**
-- .react-flow__controls: dark surface (#16191C), 1px border rgba(255,255,255,0.12)
-- .react-flow__controls-button: dark fill, amber on hover, no box-shadow
+### v0.5 (MiniMap, jump-to-node, keyboard shortcuts, op histogram)
 
-**useOnnxWorker additions**
-- runBenchmark(runs): Promise<BenchmarkResult>
-- benchmarkResult state: { avgMs, minMs, maxMs, runs } | null
-- Status: added 'benchmarking' to the union type
+- MiniMap from @xyflow/react (amber nodes, dark mask)
+- JumpController child component: Enter in filter field calls fitView() on first match
+- Keyboard shortcuts: / focuses filter input, Escape clears filter and deselects node
+- computeOpCounts(nodes): op type frequency map excluding Input/Output nodes
+- Op type histogram in LayerInspector model summary (shown when no node selected)
+- Tests: ~120 passing (v0.5.test.ts added)
 
-**Tests: 60 passing** (up from 46)
-- New: parseOnnxProto field decoding, formatShape, parseOnnxGraph topology/edges/params
-- New: BENCHMARK_RESULT message handling, runBenchmark postMessage shape
+### v0.6 (op category coloring, ancestor/descendant trace, graph depth)
+
+- OP_CATEGORIES map: op type -> category string (Convolution, Activation, Normalization, etc.)
+- opCategoryColor(opType): returns per-category color hex
+- Left accent bar on OperatorNode uses category color instead of sensitivity border
+- getAncestors(graph, nodeId): BFS backward through edges
+- getDescendants(graph, nodeId): BFS forward through edges
+- Trace mode: selecting a node highlights ancestors (blue) and descendants (green), dims rest
+- computeGraphDepth(graph): longest path via topological sort
+- DEPTH row in model summary histogram
+- Category legend showing only categories present in the loaded model
+- Tests: ~130 passing (v0.6.test.ts added)
+
+### v0.7 (multi-select, aggregate inspector, hover tooltip)
+
+- selectedNodeIds: Set<string> in App state
+- Ctrl/Meta+click for multi-select via onNodeCtrlClick prop and setMultiSelection()
+- bulkExclude(graph, ids) / bulkInclude(graph, ids) for batch operations
+- Aggregate inspector: "N NODES SELECTED" with combined param count, size, op breakdown
+- EXCLUDE ALL / INCLUDE ALL buttons in aggregate view
+- Hover tooltip: onNodeMouseEnter/Leave, fixed-position overlay with op type, params, shape
+- COPY button in LayerInspector: copies node metadata to clipboard via navigator.clipboard
+- Tests: 144 passing across 9 files (v0.7.test.ts added)
+
+### v0.8 (layout toggle, search dropdown, clipboard copy, benchmark type fix)
+
+- Layout toggle: TB (top-down) / LR (left-right) button in stats bar, passed as layoutDir prop
+- Search dropdown: up to 8 live-filtered results as you type; arrow keys navigate, Enter jumps,
+  Escape dismisses; onMouseDown used instead of onClick to avoid blur-before-click race
+- filterInputRef: useRef<HTMLInputElement> for / shortcut focus
+- Benchmark tensor type fix: makeBenchmarkTensor() helper covers all ONNX data types
+  - benchmarkInputTypes: Record<string, number> stored during LOAD_MODEL from graphInputs
+  - Fixes crash on INT64-input models like GPT-NeoX
+  - Note: onnxruntime-web uses 'float64' not 'double' as the tensor type string for elem type 11
+- Isometric 3D favicon: three shaded faces (top/left/right) per slab, amber tones
+- Tests: 144 passing across 9 files (v0.8.test.ts added)
 
 ---
 
-## What is NOT yet implemented (roadmap)
+## Planned next
 
-### v3 scope (planned next branch)
+### v0.9 (inspector depth)
 
-Priority order based on user value:
+- Attribute viewer: show op attributes (kernel size, strides, groups, etc.) in LayerInspector
+  - Attributes are parsed in onnxProtoParser as a string dict; richer decoding needed
+- Tensor shape annotations on graph edges: show tensor dimensions along the edges
+- Search by tensor name in addition to op name
 
-1. **Dynamic INT8 quantization**
-   - Challenge: onnxruntime-web is inference-only. Quantization requires modifying the
-     ONNX protobuf (change weight initializer dtypes from FLOAT to INT8/UINT8, add
-     DequantizeLinear ops, set scale/zero_point). Can be done by extending onnxProtoParser
-     with a protobuf *writer* (encode modified graph back to binary).
-   - Simpler first step: integer-rounding quantization (scale all float weights to INT8
-     range, re-encode as FLOAT with reduced precision) that at least demonstrates the
-     size change - real INT8 requires operator support in the runtime.
-   - Vercel serverless alternative: Python function using onnxruntime.quantization -
-     adds backend complexity and breaks the "zero install" pitch.
+### v1.0 (power features)
 
-2. **Before/after comparison panel**
-   - Once quantization produces a second ArrayBuffer, load both into separate workers
-     and display: original size / quantized size, param count delta, output cosine
-     similarity on a dummy input.
-
-3. **Graph search and filter**
-   - Search box to highlight nodes by op type or name
-   - Filter to show only nodes above a parameter threshold
-
-4. **Per-layer exclusion UI**
-   - Checkbox in LayerInspector to mark a node as "excluded from quantization"
-   - Persisted in a Set<string> in App state, passed to the quantization pass
-
-5. **Model export**
-   - Download the modified (quantized/pruned) ONNX as a .onnx file
-   - Use Blob + URL.createObjectURL for the download trigger
-
-6. **Improved shape inference**
-   - Most models only expose ValueInfoProto shapes for graph-level inputs and outputs.
-     Intermediate tensor shapes require running ONNX shape inference.
-   - Can be approximated by tracking shapes through known ops (Conv, MatMul, etc.)
-     using the initializer dims as hints.
+- Subgraph collapse: fold a selected subtree into a single group node
+- Side-by-side model diff: load two ONNX files, highlight structural differences
+- Export filtered graph: strip excluded nodes and re-export a pruned ONNX file
 
 ---
 
@@ -159,45 +158,43 @@ Priority order based on user value:
 
 ```
 src/
-  App.tsx                   root component, layout, state wiring
+  App.tsx                   root component, layout, state wiring, keyboard shortcuts
   components/
-    GraphCanvas.tsx          React Flow canvas, dagre layout, sensitivity borders
-    LayerInspector.tsx       selected node detail + shapes + sensitivity row
+    GraphCanvas.tsx          React Flow canvas, dagre layout, MiniMap, JumpController,
+                             hover tooltip, layout direction prop, trace role coloring
+    LayerInspector.tsx       per-node detail, multi-select aggregate, model summary histogram,
+                             COPY button, category swatches, DEPTH row
     ModelDropzone.tsx        full-viewport drop zone
   hooks/
-    useOnnxWorker.ts         Worker lifecycle, loadModel, runBenchmark, runInference
+    useOnnxWorker.ts         Worker lifecycle, loadModel, runBenchmark, exportModel
   lib/
-    onnxProtoParser.ts       binary ONNX protobuf parser (core of v2)
-    onnxParser.ts            builds OnnxGraph from ParsedGraph + initializer sizes
-    onnxTypes.ts             OnnxNode, OnnxEdge, OnnxGraph, OnnxDim interfaces
-    graphUtils.ts            pure selection helpers: selectNode, deselectAll, validateEdges
+    onnxProtoParser.ts       binary ONNX protobuf parser; ParsedValueInfo has elemType
+    onnxParser.ts            builds OnnxGraph; returns graphInputs (non-initializer inputs)
+    onnxTypes.ts             OnnxNode, OnnxEdge, OnnxGraph, OnnxDim, ParsedValueInfo
+    graphUtils.ts            selection, filter, exclusion, tracing, depth, multi-select,
+                             OP_CATEGORIES, opCategoryColor, computeOpCounts, computeGraphDepth
+    quantize.ts              estimateInt8Size, compressionRatio, formatQuantizeEstimate
   workers/
-    onnxWorker.ts            LOAD_MODEL, RUN_INFERENCE, BENCHMARK, PROGRESS, ERROR
+    onnxWorker.ts            LOAD_MODEL, BENCHMARK, EXPORT, makeBenchmarkTensor
   styles/
     theme.css                CSS custom properties + React Flow Controls overrides
   __tests__/
-    graph.test.ts            23 tests: selection model, edge validation
-    onnx.test.ts             22 tests: proto parser, parseOnnxGraph, worker hook
-    app.test.tsx             15 tests: integration, load flow, select, benchmark message
+    graph.test.ts            graph utilities, selection model, edge validation
+    onnx.test.ts             proto parser, parseOnnxGraph, worker hook lifecycle
+    app.test.tsx             integration: load flow, selection, error states
+    v3.test.ts               filter, exclusion, INT8 estimation
+    v4.test.ts               export reliability, quantize formatting, download filename
+    v0.5.test.ts             computeOpCounts, keyboard shortcuts, op histogram
+    v0.6.test.ts             opCategoryColor, getAncestors/getDescendants, computeGraphDepth
+    v0.7.test.ts             setMultiSelection, bulkExclude/bulkInclude, aggregate inspector
+    v0.8.test.ts             layout toggle, search dropdown, clipboard copy, benchmark types
 public/
-  favicon.svg               Wireframe Tensor icon (v2+)
+  favicon.svg               isometric 3D stacked layers (amber, three shaded faces per slab)
   ort-wasm-simd-threaded.*  WASM runtime files (gitignored, copied by prebuild script)
 vercel.json                 SPA rewrite + COOP/COEP headers
 vite.config.ts              Worker ES format, onnxruntime-web exclusion, Vitest config
 package.json                copy-ort-wasm prebuild/predev scripts
 ```
-
----
-
-## Test files (gitignored, in test_files/)
-
-- sageconv_Opset18.onnx:   24 nodes, 3 initializers, 20K params (GNN)
-- tagconv_Opset17.onnx:    53 nodes, 5 initializers, 40K params (GNN)
-- gptneox_Opset17.onnx:    (GPT-NeoX, potentially large)
-- adv_inception_v3_Opset16.onnx: (Inception v3, ~25M params)
-
-Use adv_inception_v3 to test sensitivity coloring (should show many red high-param nodes).
-Use sageconv or tagconv for fast iteration during development.
 
 ---
 
@@ -207,8 +204,10 @@ Use sageconv or tagconv for fast iteration during development.
 - No co-author tags in commits
 - Font: JetBrains Mono only. No Inter, Roboto, or sans-serif.
 - Spacing: strict 4px/8px grid. No arbitrary pixel values.
-- Colors: #12161A base, #FFB000 amber, #4A5D23 military green, #C0392B error.
-  No box-shadows, no gradients, no border-radius above 2px.
-- Branches: one branch per version (v3, v4, ...). PR to master when complete.
+- Colors: #12161A base, #16191C surface, #1C2128 raised, #FFB000 amber, #52C57A green,
+  #C0392B error. No box-shadows, no gradients, no border-radius above 2px.
+- Branches: one branch per version. PR to master when complete.
 - Tests: write tests alongside new code. Keep all existing tests passing.
 - Build: npm run build must succeed (tsc -b + vite build) before any PR.
+- README: update version badge, test count, capabilities, and releases table on every version.
+- GitHub releases: create immediately after each merge. Never let a merged version go untagged.
