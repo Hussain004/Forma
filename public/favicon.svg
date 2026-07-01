@@ -2,23 +2,26 @@
   <!-- Dark base -->
   <rect width="64" height="64" fill="#12161A"/>
 
-  <!-- Input terminal and line -->
-  <circle cx="32" cy="3" r="2" fill="rgba(255,255,255,0.55)"/>
-  <line x1="32" y1="5" x2="32" y2="13" stroke="white" stroke-width="1"/>
+  <!-- Input handle (single, centered above card) -->
+  <rect x="29" y="10" width="6" height="5" fill="#FFB000"/>
+  <line x1="32" y1="15" x2="32" y2="19" stroke="#FFB000" stroke-width="1" opacity="0.5"/>
 
-  <!-- Diamond gate (computation node) -->
-  <polygon points="32,13 50,31 32,49 14,31" stroke="white" stroke-width="1.5" fill="#16191C"/>
+  <!-- Operator node card -->
+  <rect x="8" y="19" width="48" height="26" fill="#16191C" stroke="rgba(255,255,255,0.6)" stroke-width="1"/>
 
-  <!-- Active tensor: amber square at center -->
-  <rect x="29" y="28" width="6" height="6" fill="#FFB000"/>
+  <!-- Amber left accent bar (matches the app's active node style) -->
+  <rect x="8" y="19" width="4" height="26" fill="#FFB000"/>
 
-  <!-- Three output branches from bottom vertex -->
-  <line x1="32" y1="49" x2="14" y2="61" stroke="white" stroke-width="1"/>
-  <line x1="32" y1="49" x2="32" y2="61" stroke="white" stroke-width="1"/>
-  <line x1="32" y1="49" x2="50" y2="61" stroke="white" stroke-width="1"/>
+  <!-- Content placeholder: op type label line -->
+  <rect x="17" y="26" width="26" height="2" fill="rgba(255,255,255,0.35)"/>
+  <!-- Content placeholder: param count line -->
+  <rect x="17" y="32" width="17" height="1.5" fill="rgba(255,255,255,0.18)"/>
 
-  <!-- Output terminals -->
-  <circle cx="14" cy="61" r="2" fill="rgba(255,255,255,0.4)"/>
-  <circle cx="32" cy="61" r="2" fill="rgba(255,255,255,0.4)"/>
-  <circle cx="50" cy="61" r="2" fill="rgba(255,255,255,0.4)"/>
+  <!-- Output lines (two, representing fan-out to next layer) -->
+  <line x1="22" y1="45" x2="22" y2="50" stroke="rgba(255,255,255,0.4)" stroke-width="1"/>
+  <line x1="42" y1="45" x2="42" y2="50" stroke="rgba(255,255,255,0.4)" stroke-width="1"/>
+
+  <!-- Output handles -->
+  <rect x="19" y="50" width="6" height="4" fill="#FFB000"/>
+  <rect x="39" y="50" width="6" height="4" fill="#FFB000"/>
 </svg>
