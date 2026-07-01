@@ -3,7 +3,7 @@ import { ModelDropzone } from './components/ModelDropzone'
 import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
 import { useOnnxWorker } from './hooks/useOnnxWorker'
-import { toSelectableGraph, selectNode, deselectAll, filterGraph, excludeNode, includeNode, type SelectableGraph } from './lib/graphUtils'
+import { toSelectableGraph, selectNode, deselectAll, filterGraph, excludeNode, includeNode, computeOpCounts, type SelectableGraph } from './lib/graphUtils'
 import { formatQuantizeEstimate } from './lib/quantize'
 import type { OnnxNode } from './lib/onnxTypes'
 import type { QuantizeEstimate } from './hooks/useOnnxWorker'
@@ -23,6 +23,9 @@ interface StatsBarProps {
   quantizeEstimate: QuantizeEstimate | null
   filterQuery: string
   onFilterChange: (value: string) => void
+  filterInputRef: React.RefObject<HTMLInputElement | null>
+  onFilterEnter: () => void
+  onFilterFocus: () => void
   onBenchmark: () => void
   benchmarkLabel: string | null
   onDownload: () => void
@@ -30,7 +33,7 @@ interface StatsBarProps {
   onReset: () => void
 }
 
-function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, onBenchmark, benchmarkLabel, onDownload, canDownload, onReset }: StatsBarProps) {
+function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterEnter, onFilterFocus, onBenchmark, benchmarkLabel, onDownload, canDownload, onReset }: StatsBarProps) {
   const quantizeLabel = formatQuantizeEstimate(quantizeEstimate)
   return (
     <div style={{
@@ -60,9 +63,12 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
       )}
       <span>{nodeCount} NODES</span>
       <input
+        ref={filterInputRef}
         type="text"
         value={filterQuery}
         onChange={(e) => onFilterChange(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') onFilterEnter() }}
+        onFocus={onFilterFocus}
         placeholder="FILTER NODES"
         style={{
           background: 'transparent',
@@ -145,6 +151,8 @@ function App() {
   const [excludedNodeIds, setExcludedNodeIds] = useState<Set<string>>(new Set())
   const [showDropzone, setShowDropzone] = useState(true)
   const [panelWidth, setPanelWidth] = useState(280)
+  const [jumpToNodeId, setJumpToNodeId] = useState<string | null>(null)
+  const filterInputRef = useRef<HTMLInputElement>(null)
   const isResizing = useRef(false)
   const resizeStartX = useRef(0)
   const resizeStartWidth = useRef(0)
@@ -176,13 +184,46 @@ function App() {
     if (graph) setShowDropzone(false)
   }, [graph])
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName
+      if (e.key === 'Escape') {
+        setFilterQuery('')
+        setSelectableGraph((sg) => (sg ? deselectAll(sg) : sg))
+        return
+      }
+      if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        e.preventDefault()
+        filterInputRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   const filteredGraph = useMemo(
     () => (selectableGraph ? filterGraph(selectableGraph, filterQuery) : null),
     [selectableGraph, filterQuery],
   )
 
+  const modelStats = useMemo(() => {
+    if (!selectableGraph) return null
+    const opCounts = computeOpCounts(selectableGraph.nodes)
+    return { opCounts, totalNodes: selectableGraph.nodes.filter(n => n.opType !== 'Input' && n.opType !== 'Output').length }
+  }, [selectableGraph])
+
   const selectedNode: OnnxNode | null = filteredGraph?.nodes.find((n) => n.selected) ?? null
   const selectedNodeId: string | null = selectedNode?.id ?? null
+
+  const handleFilterChange = (value: string) => {
+    setFilterQuery(value)
+    setJumpToNodeId(null)
+  }
+
+  const handleFilterEnter = () => {
+    const first = filteredGraph?.nodes.find((n) => !n.dimmed)
+    if (first) setJumpToNodeId(first.id)
+  }
 
   const handleModelLoaded = (buffer: ArrayBuffer, filename: string) => {
     setSelectableGraph(null)
@@ -215,7 +256,8 @@ function App() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = (graph?.modelName ?? 'model') + '_export.onnx'
+      const baseName = (graph?.modelName ?? 'model').replace(/\.[^.]+$/, '')
+      a.download = baseName + '_export.onnx'
       a.click()
       URL.revokeObjectURL(url)
     })
@@ -254,7 +296,10 @@ function App() {
             nodeCount={filteredGraph.nodes.filter(n => n.opType !== 'Input' && n.opType !== 'Output').length}
             quantizeEstimate={quantizeEstimate}
             filterQuery={filterQuery}
-            onFilterChange={setFilterQuery}
+            onFilterChange={handleFilterChange}
+            filterInputRef={filterInputRef}
+            onFilterEnter={handleFilterEnter}
+            onFilterFocus={() => setJumpToNodeId(null)}
             onBenchmark={() => runBenchmark(10)}
             benchmarkLabel={benchmarkLabel}
             onDownload={handleDownload}
@@ -268,6 +313,7 @@ function App() {
                 onnxEdges={filteredGraph.edges}
                 selectedNodeId={selectedNodeId}
                 onNodeSelect={handleNodeSelect}
+                jumpToNodeId={jumpToNodeId}
               />
             </div>
             <div style={{ width: panelWidth, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.1)', height: '100%', position: 'relative', display: 'flex' }}>
@@ -287,7 +333,7 @@ function App() {
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               />
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} />
+                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} />
               </div>
             </div>
           </div>

@@ -5,10 +5,6 @@ import { useOnnxWorker } from '../hooks/useOnnxWorker'
 import App from '../App'
 import type { OnnxGraph } from '../lib/onnxTypes'
 
-// formatQuantizeEstimate does not exist in quantize.ts yet. The UI specialist
-// will add it. Until then this import resolves to undefined at runtime, which
-// makes the Group 2 tests fail as intended.
-// @ts-expect-error formatQuantizeEstimate is not implemented yet
 import { formatQuantizeEstimate } from '../lib/quantize'
 
 // ---- Shared mock worker (mirrors onnx.test.ts) ----
@@ -197,6 +193,6 @@ describe('App download button (v4)', () => {
     })
 
     await waitFor(() => expect(clickSpy).toHaveBeenCalled())
-    expect(anchor.download).toContain('test.onnx')
+    expect(anchor.download).toMatch(/^test_export\.onnx$/)
   })
 })

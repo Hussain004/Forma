@@ -62,3 +62,12 @@ export function includeNode(graph: SelectableGraph, nodeId: string): SelectableG
     nodes: graph.nodes.map((n) => (n.id === nodeId ? { ...n, excluded: false } : n)),
   }
 }
+
+export function computeOpCounts(nodes: OnnxNode[]): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const n of nodes) {
+    if (n.opType === 'Input' || n.opType === 'Output') continue
+    counts[n.opType] = (counts[n.opType] ?? 0) + 1
+  }
+  return counts
+}
