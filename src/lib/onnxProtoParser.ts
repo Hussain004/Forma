@@ -123,7 +123,7 @@ export interface ParsedGraph {
   inputs: ParsedValueInfo[]
   outputs: ParsedValueInfo[]
   valueInfo: ParsedValueInfo[]
-  metadata: ModelMetadata
+  metadata?: ModelMetadata
 }
 
 // ---- Low-level reader ----
