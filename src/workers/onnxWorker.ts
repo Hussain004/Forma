@@ -40,7 +40,7 @@ function makeBenchmarkTensor(elemType: number, size: number, shape: number[]): o
     case 3:  return new ort.Tensor('int8',    new Int8Array(size),     shape)
     case 5:  return new ort.Tensor('int16',   new Int16Array(size),    shape)
     case 9:  return new ort.Tensor('bool',    new Uint8Array(size),    shape)
-    case 11: return new ort.Tensor('double',  new Float64Array(size),  shape)
+    case 11: return new ort.Tensor('float64', new Float64Array(size),  shape)
     case 10: return new ort.Tensor('float16', new Uint16Array(size),   shape)
     default: return new ort.Tensor('float32', new Float32Array(size),  shape)
   }
