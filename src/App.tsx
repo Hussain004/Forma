@@ -215,7 +215,8 @@ function App() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = (graph?.modelName ?? 'model') + '_export.onnx'
+      const baseName = (graph?.modelName ?? 'model').replace(/\.[^.]+$/, '')
+      a.download = baseName + '_export.onnx'
       a.click()
       URL.revokeObjectURL(url)
     })
