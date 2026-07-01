@@ -242,6 +242,17 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
 
   const isCompute = node.opType !== 'Input' && node.opType !== 'Output'
 
+  const handleCopy = () => {
+    const lines = [
+      `Op Type:    ${node.opType}`,
+      `Parameters: ${node.paramCount.toLocaleString()}`,
+      `Size:       ${node.estimatedSizeMB.toFixed(3)} MB`,
+    ]
+    if (node.inputs.length > 0) lines.push(`Inputs:     ${node.inputs.join(', ')}`)
+    if (node.outputs.length > 0) lines.push(`Outputs:    ${node.outputs.join(', ')}`)
+    navigator.clipboard.writeText(lines.join('\n')).catch(() => {})
+  }
+
   return (
     <div
       style={{
@@ -254,6 +265,25 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
         boxSizing: 'border-box',
       }}
     >
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button
+          onClick={handleCopy}
+          style={{
+            background: 'none',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: 2,
+            color: 'var(--text-dim)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10,
+            letterSpacing: '0.06em',
+            padding: '2px 10px',
+            cursor: 'pointer',
+            textTransform: 'uppercase',
+          }}
+        >
+          COPY
+        </button>
+      </div>
       <Row label="OP TYPE" value={node.opType} />
       <Row label="PARAMETERS" value={node.paramCount.toLocaleString()} />
       <Row label="EST. SIZE" value={`${node.estimatedSizeMB.toFixed(3)} MB`} />

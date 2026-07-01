@@ -24,8 +24,15 @@ interface StatsBarProps {
   filterQuery: string
   onFilterChange: (value: string) => void
   filterInputRef: React.RefObject<HTMLInputElement | null>
-  onFilterEnter: () => void
+  onFilterKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void
   onFilterFocus: () => void
+  onFilterBlur: () => void
+  dropdownResults: Array<{ id: string; opType: string; paramCount: number }>
+  showDropdown: boolean
+  dropdownIndex: number
+  onDropdownSelect: (id: string) => void
+  layoutDir: 'TB' | 'LR'
+  onLayoutToggle: () => void
   onBenchmark: () => void
   benchmarkLabel: string | null
   onDownload: () => void
@@ -33,7 +40,7 @@ interface StatsBarProps {
   onReset: () => void
 }
 
-function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterEnter, onFilterFocus, onBenchmark, benchmarkLabel, onDownload, canDownload, onReset }: StatsBarProps) {
+function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, onDownload, canDownload, onReset }: StatsBarProps) {
   const quantizeLabel = formatQuantizeEstimate(quantizeEstimate)
   return (
     <div style={{
@@ -62,27 +69,89 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
         </span>
       )}
       <span>{nodeCount} NODES</span>
-      <input
-        ref={filterInputRef}
-        type="text"
-        value={filterQuery}
-        onChange={(e) => onFilterChange(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') onFilterEnter() }}
-        onFocus={onFilterFocus}
-        placeholder="FILTER NODES"
-        style={{
-          background: 'transparent',
-          border: '1px solid rgba(255,255,255,0.15)',
-          color: 'var(--text-secondary)',
-          fontFamily: 'var(--font-mono)',
-          fontSize: 11,
-          letterSpacing: '0.06em',
-          padding: '2px 8px',
-          width: 160,
-          borderRadius: 2,
-        }}
-      />
+      <div style={{ position: 'relative' }}>
+        <input
+          ref={filterInputRef}
+          type="text"
+          value={filterQuery}
+          onChange={(e) => onFilterChange(e.target.value)}
+          onKeyDown={onFilterKeyDown}
+          onFocus={onFilterFocus}
+          onBlur={onFilterBlur}
+          placeholder="FILTER NODES"
+          style={{
+            background: 'transparent',
+            border: '1px solid rgba(255,255,255,0.15)',
+            color: 'var(--text-secondary)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            letterSpacing: '0.06em',
+            padding: '2px 8px',
+            width: 160,
+            borderRadius: 2,
+          }}
+        />
+        {showDropdown && dropdownResults.length > 0 && (
+          <div data-testid="search-dropdown" role="listbox" style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            width: 280,
+            background: '#1C2128',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: 2,
+            zIndex: 1000,
+            marginTop: 2,
+            maxHeight: 240,
+            overflowY: 'auto',
+          }}>
+            {dropdownResults.map((node, i) => (
+              <div
+                key={node.id}
+                role="option"
+                aria-selected={i === dropdownIndex}
+                data-testid="search-result"
+                onMouseDown={() => onDropdownSelect(node.id)}
+                style={{
+                  padding: '6px 12px',
+                  cursor: 'pointer',
+                  background: i === dropdownIndex ? 'rgba(255,176,0,0.12)' : 'transparent',
+                  borderLeft: i === dropdownIndex ? '2px solid #FFB000' : '2px solid transparent',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              >
+                <span style={{ color: 'var(--text-primary)', fontSize: 11 }}>{node.opType}</span>
+                {node.paramCount > 0 && (
+                  <span style={{ color: 'var(--text-dim)', fontSize: 10 }}>
+                    {node.paramCount.toLocaleString()}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button
+          onClick={onLayoutToggle}
+          style={{
+            background: 'none',
+            border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: 2,
+            color: 'var(--text-primary)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            letterSpacing: '0.06em',
+            padding: '4px 16px',
+            cursor: 'pointer',
+            textTransform: 'uppercase',
+          }}
+        >
+          {layoutDir}
+        </button>
         {benchmarkLabel && (
           <span style={{ color: 'var(--color-green)' }}>{benchmarkLabel}</span>
         )}
@@ -148,6 +217,9 @@ function App() {
   const { loadModel, runBenchmark, exportModel, graph, status, error, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
   const [selectableGraph, setSelectableGraph] = useState<SelectableGraph | null>(null)
   const [filterQuery, setFilterQuery] = useState('')
+  const [layoutDir, setLayoutDir] = useState<'TB' | 'LR'>('TB')
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [dropdownIndex, setDropdownIndex] = useState(-1)
   const [excludedNodeIds, setExcludedNodeIds] = useState<Set<string>>(new Set())
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set())
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -193,6 +265,7 @@ function App() {
       const tag = (e.target as HTMLElement).tagName
       if (e.key === 'Escape') {
         setFilterQuery('')
+        setShowDropdown(false)
         setSelectedNodeIds(new Set())
         setSelectedNodeId(null)
         setSelectableGraph((sg) => (sg ? deselectAll(sg) : sg))
@@ -211,6 +284,13 @@ function App() {
     () => (selectableGraph ? filterGraph(selectableGraph, filterQuery) : null),
     [selectableGraph, filterQuery],
   )
+
+  const dropdownResults = useMemo(() => {
+    if (!filterQuery.trim() || !filteredGraph) return []
+    return filteredGraph.nodes
+      .filter(n => !n.dimmed && n.opType !== 'Input' && n.opType !== 'Output')
+      .slice(0, 8)
+  }, [filterQuery, filteredGraph])
 
   const modelStats = useMemo(() => {
     if (!selectableGraph) return null
@@ -247,11 +327,47 @@ function App() {
   const handleFilterChange = (value: string) => {
     setFilterQuery(value)
     setJumpToNodeId(null)
+    setDropdownIndex(-1)
+    setShowDropdown(value.trim().length > 0)
   }
 
-  const handleFilterEnter = () => {
-    const first = filteredGraph?.nodes.find((n) => !n.dimmed)
-    if (first) setJumpToNodeId(first.id)
+  const handleDropdownSelect = (id: string) => {
+    applySelection(new Set([id]), id)
+    setJumpToNodeId(id)
+    setShowDropdown(false)
+  }
+
+  const handleFilterKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setDropdownIndex(i => Math.min(i + 1, dropdownResults.length - 1))
+      setShowDropdown(true)
+      return
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setDropdownIndex(i => Math.max(0, i - 1))
+      return
+    }
+    if (e.key === 'Enter') {
+      const target = dropdownResults[dropdownIndex] ?? dropdownResults[0]
+      if (target) handleDropdownSelect(target.id)
+      return
+    }
+    if (e.key === 'Escape') {
+      setShowDropdown(false)
+      setFilterQuery('')
+      setSelectedNodeId(null)
+    }
+  }
+
+  const handleFilterFocus = () => {
+    setJumpToNodeId(null)
+    if (filterQuery.trim()) setShowDropdown(true)
+  }
+
+  const handleFilterBlur = () => {
+    setTimeout(() => setShowDropdown(false), 150)
   }
 
   const handleModelLoaded = (buffer: ArrayBuffer, filename: string) => {
@@ -360,8 +476,15 @@ function App() {
             filterQuery={filterQuery}
             onFilterChange={handleFilterChange}
             filterInputRef={filterInputRef}
-            onFilterEnter={handleFilterEnter}
-            onFilterFocus={() => setJumpToNodeId(null)}
+            onFilterKeyDown={handleFilterKeyDown}
+            onFilterFocus={handleFilterFocus}
+            onFilterBlur={handleFilterBlur}
+            dropdownResults={dropdownResults}
+            showDropdown={showDropdown}
+            dropdownIndex={dropdownIndex}
+            onDropdownSelect={handleDropdownSelect}
+            layoutDir={layoutDir}
+            onLayoutToggle={() => setLayoutDir(d => d === 'TB' ? 'LR' : 'TB')}
             onBenchmark={() => runBenchmark(10)}
             benchmarkLabel={benchmarkLabel}
             onDownload={handleDownload}
@@ -379,6 +502,7 @@ function App() {
                 jumpToNodeId={jumpToNodeId}
                 traceAncestors={ancestors}
                 traceDescendants={descendants}
+                layoutDir={layoutDir}
               />
             </div>
             <div style={{ width: panelWidth, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.1)', height: '100%', position: 'relative', display: 'flex' }}>
