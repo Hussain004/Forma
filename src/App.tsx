@@ -3,7 +3,7 @@ import { ModelDropzone } from './components/ModelDropzone'
 import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
 import { useOnnxWorker } from './hooks/useOnnxWorker'
-import { toSelectableGraph, selectNode, deselectAll, filterGraph, excludeNode, includeNode, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, type SelectableGraph } from './lib/graphUtils'
+import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, type SelectableGraph } from './lib/graphUtils'
 import { formatQuantizeEstimate } from './lib/quantize'
 import type { OnnxNode } from './lib/onnxTypes'
 import type { QuantizeEstimate } from './hooks/useOnnxWorker'
@@ -149,6 +149,8 @@ function App() {
   const [selectableGraph, setSelectableGraph] = useState<SelectableGraph | null>(null)
   const [filterQuery, setFilterQuery] = useState('')
   const [excludedNodeIds, setExcludedNodeIds] = useState<Set<string>>(new Set())
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set())
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [showDropzone, setShowDropzone] = useState(true)
   const [panelWidth, setPanelWidth] = useState(280)
   const [jumpToNodeId, setJumpToNodeId] = useState<string | null>(null)
@@ -181,6 +183,8 @@ function App() {
     setSelectableGraph(graph ? toSelectableGraph(graph) : null)
     setFilterQuery('')
     setExcludedNodeIds(new Set())
+    setSelectedNodeIds(new Set())
+    setSelectedNodeId(null)
     if (graph) setShowDropzone(false)
   }, [graph])
 
@@ -189,6 +193,8 @@ function App() {
       const tag = (e.target as HTMLElement).tagName
       if (e.key === 'Escape') {
         setFilterQuery('')
+        setSelectedNodeIds(new Set())
+        setSelectedNodeId(null)
         setSelectableGraph((sg) => (sg ? deselectAll(sg) : sg))
         return
       }
@@ -216,8 +222,19 @@ function App() {
     }
   }, [selectableGraph])
 
-  const selectedNode: OnnxNode | null = filteredGraph?.nodes.find((n) => n.selected) ?? null
-  const selectedNodeId: string | null = selectedNode?.id ?? null
+  const selectedNode: OnnxNode | null = selectedNodeId
+    ? filteredGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null
+    : null
+
+  const multiSelection = useMemo(() => {
+    if (selectedNodeIds.size <= 1 || !selectableGraph) return undefined
+    const nodes = selectableGraph.nodes.filter((n) => selectedNodeIds.has(n.id))
+    return {
+      nodes,
+      totalParams: nodes.reduce((s, n) => s + n.paramCount, 0),
+      totalSizeMB: nodes.reduce((s, n) => s + n.estimatedSizeMB, 0),
+    }
+  }, [selectedNodeIds, selectableGraph])
 
   const { ancestors, descendants } = useMemo(() => {
     if (!selectedNodeId || !selectableGraph) return { ancestors: new Set<string>(), descendants: new Set<string>() }
@@ -242,8 +259,41 @@ function App() {
     loadModel(buffer, filename)
   }
 
+  const applySelection = (ids: Set<string>, primary: string | null) => {
+    setSelectedNodeIds(ids)
+    setSelectedNodeId(primary)
+    setSelectableGraph((sg) => (sg ? setMultiSelection(sg, ids) : sg))
+  }
+
   const handleNodeSelect = (nodeId: string) => {
-    setSelectableGraph((sg) => sg ? selectNode(deselectAll(sg), nodeId) : sg)
+    applySelection(new Set([nodeId]), nodeId)
+  }
+
+  const handleNodeCtrlClick = (nodeId: string) => {
+    const next = new Set(selectedNodeIds)
+    let primary: string | null
+    if (next.has(nodeId)) {
+      next.delete(nodeId)
+      primary = selectedNodeId === nodeId ? (next.values().next().value ?? null) : selectedNodeId
+    } else {
+      next.add(nodeId)
+      primary = nodeId
+    }
+    applySelection(next, primary)
+  }
+
+  const handleBulkExclude = () => {
+    setExcludedNodeIds((prev) => new Set([...prev, ...selectedNodeIds]))
+    setSelectableGraph((sg) => (sg ? bulkExclude(sg, selectedNodeIds) : sg))
+  }
+
+  const handleBulkInclude = () => {
+    setExcludedNodeIds((prev) => {
+      const nextSet = new Set(prev)
+      for (const id of selectedNodeIds) nextSet.delete(id)
+      return nextSet
+    })
+    setSelectableGraph((sg) => (sg ? bulkInclude(sg, selectedNodeIds) : sg))
   }
 
   const handleToggleExclude = (nodeId: string) => {
@@ -325,6 +375,7 @@ function App() {
                 onnxEdges={filteredGraph.edges}
                 selectedNodeId={selectedNodeId}
                 onNodeSelect={handleNodeSelect}
+                onNodeCtrlClick={handleNodeCtrlClick}
                 jumpToNodeId={jumpToNodeId}
                 traceAncestors={ancestors}
                 traceDescendants={descendants}
@@ -347,7 +398,7 @@ function App() {
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               />
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} />
+                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} />
               </div>
             </div>
           </div>

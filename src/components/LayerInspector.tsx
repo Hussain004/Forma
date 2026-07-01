@@ -7,6 +7,26 @@ interface LayerInspectorProps {
   onToggleExclude?: (nodeId: string) => void
   quantizeEstimate?: { ratio: number } | null
   modelStats?: { opCounts: Record<string, number>; totalNodes: number; graphDepth?: number } | null
+  multiSelection?: {
+    nodes: OnnxNode[]
+    totalParams: number
+    totalSizeMB: number
+  }
+  onBulkExclude?: () => void
+  onBulkInclude?: () => void
+}
+
+const bulkButtonStyle: React.CSSProperties = {
+  background: 'none',
+  border: '1px solid rgba(255,255,255,0.15)',
+  borderRadius: 2,
+  color: 'var(--text-dim)',
+  fontFamily: 'var(--font-mono)',
+  fontSize: 10,
+  letterSpacing: '0.06em',
+  padding: '2px 10px',
+  cursor: 'pointer',
+  textTransform: 'uppercase',
 }
 
 const CATEGORY_LEGEND: { name: string; color: string }[] = [
@@ -88,7 +108,53 @@ function sensitivityColor(params: number): string {
   return '#52C57A'
 }
 
-export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats }: LayerInspectorProps) {
+export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude }: LayerInspectorProps) {
+  if (multiSelection && multiSelection.nodes.length > 1) {
+    const opCounts: Record<string, number> = {}
+    for (const n of multiSelection.nodes) {
+      opCounts[n.opType] = (opCounts[n.opType] ?? 0) + 1
+    }
+    const sortedOps = Object.entries(opCounts).sort((a, b) => b[1] - a[1])
+    return (
+      <div
+        style={{
+          background: 'var(--bg-surface)',
+          borderLeft: '2px solid #FFB000',
+          padding: 16,
+          height: '100%',
+          minWidth: 260,
+          overflowY: 'auto',
+          boxSizing: 'border-box',
+        }}
+      >
+        <div style={{ color: '#FFB000', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: '0.08em', marginBottom: 12, textTransform: 'uppercase' }}>
+          {multiSelection.nodes.length} Nodes Selected
+        </div>
+        <div style={rowStyle}>
+          <span style={labelStyle}>TOTAL PARAMS</span>
+          <span style={valueStyle}>{multiSelection.totalParams.toLocaleString()}</span>
+        </div>
+        <div style={rowStyle}>
+          <span style={labelStyle}>TOTAL SIZE</span>
+          <span style={valueStyle}>{multiSelection.totalSizeMB.toFixed(2)} MB</span>
+        </div>
+        {sectionHeader('Op Types')}
+        {sortedOps.map(([opType, count]) => (
+          <div key={opType} style={rowStyle}>
+            <span style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ ...swatchStyle, background: opCategoryColor(opType) }} />
+              {opType}
+            </span>
+            <span style={valueStyle}>{count}</span>
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <button onClick={onBulkExclude} style={bulkButtonStyle}>EXCLUDE ALL</button>
+          <button onClick={onBulkInclude} style={bulkButtonStyle}>INCLUDE ALL</button>
+        </div>
+      </div>
+    )
+  }
   if (!node) {
     if (!modelStats) {
       return (

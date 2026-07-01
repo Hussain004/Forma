@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -18,7 +18,7 @@ import dagre from 'dagre'
 import '@xyflow/react/dist/style.css'
 import type { OnnxNode, OnnxEdge } from '../lib/onnxTypes'
 import { formatShape } from '../lib/onnxProtoParser'
-import { validateEdges, opCategoryColor } from '../lib/graphUtils'
+import { validateEdges, opCategoryColor, type SelectableNode } from '../lib/graphUtils'
 
 const NODE_WIDTH = 180
 const NODE_HEIGHT = 64
@@ -171,6 +171,7 @@ interface GraphCanvasProps {
   onnxEdges: OnnxEdge[]
   selectedNodeId: string | null
   onNodeSelect: (nodeId: string) => void
+  onNodeCtrlClick?: (nodeId: string) => void
   jumpToNodeId?: string | null
   traceAncestors?: Set<string>
   traceDescendants?: Set<string>
@@ -198,7 +199,7 @@ function toFlowGraph(
       id: n.id,
       type: isIO ? 'io' : 'operator',
       position: { x: 0, y: 0 },
-      selected: n.id === selectedNodeId,
+      selected: (n as SelectableNode).selected ?? (n.id === selectedNodeId),
       data: isIO
         ? { label: n.outputs[0] ?? n.inputs[0] ?? n.opType, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive }
         : { opType: n.opType, paramCount: n.paramCount, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive },
@@ -232,7 +233,7 @@ function JumpController({ jumpToNodeId }: { jumpToNodeId?: string | null }) {
 
 const EMPTY_TRACE: Set<string> = new Set()
 
-export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE }: GraphCanvasProps) {
+export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE }: GraphCanvasProps) {
   const computed = useMemo(
     () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants),
     [onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants],
@@ -240,11 +241,15 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
 
   const [nodes, setNodes, onNodesChange] = useNodesState(computed.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(computed.edges)
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     setNodes(computed.nodes)
     setEdges(computed.edges)
   }, [computed, setNodes, setEdges])
+
+  const hoveredNode = hoveredNodeId ? onnxNodes.find((n) => n.id === hoveredNodeId) : null
 
   return (
     <div style={{ width: '100%', height: '100%' }} data-testid="graph-canvas">
@@ -254,7 +259,21 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
-        onNodeClick={(_, node) => onNodeSelect(node.id)}
+        onNodeClick={(event, node) => {
+          if (event.ctrlKey || event.metaKey) {
+            onNodeCtrlClick?.(node.id)
+          } else {
+            onNodeSelect(node.id)
+          }
+        }}
+        onNodeMouseEnter={(event, node) => {
+          setHoveredNodeId(node.id)
+          setTooltipPos({ x: event.clientX, y: event.clientY })
+        }}
+        onNodeMouseLeave={() => {
+          setHoveredNodeId(null)
+          setTooltipPos(null)
+        }}
         fitView
         proOptions={{ hideAttribution: true }}
         minZoom={0.1}
@@ -283,6 +302,38 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
         />
         <JumpController jumpToNodeId={jumpToNodeId} />
       </ReactFlow>
+      {hoveredNode && tooltipPos && (
+        <div
+          style={{
+            position: 'fixed',
+            left: tooltipPos.x + 16,
+            top: tooltipPos.y + 8,
+            background: '#1C2128',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: 2,
+            padding: '8px 12px',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            color: 'var(--text-primary)',
+            pointerEvents: 'none',
+            zIndex: 9999,
+            minWidth: 160,
+            letterSpacing: '0.04em',
+          }}
+        >
+          <div style={{ color: '#FFB000', marginBottom: 4 }}>{hoveredNode.opType}</div>
+          {hoveredNode.paramCount > 0 && (
+            <div style={{ color: 'var(--text-secondary)', fontSize: 10 }}>
+              {hoveredNode.paramCount.toLocaleString()} params
+            </div>
+          )}
+          {hoveredNode.outputShapes?.[0] && (
+            <div style={{ color: 'var(--text-dim)', fontSize: 10, marginTop: 2 }}>
+              {formatShape(hoveredNode.outputShapes[0])}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
