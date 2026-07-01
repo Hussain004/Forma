@@ -1,110 +1,75 @@
 <div align="center">
 
-<img src="public/favicon.svg" width="80" alt="Forma Logo" />
+<img src="public/favicon.svg" width="80" alt="Forma" />
 
 # Forma
 
-### Browser-Native ONNX Network Visualizer
+### Browser-Native ONNX Model Visualizer
 
-**Load trained neural networks in your browser. Inspect every layer. No Python, no CLI, no installation.**
+**Inspect, analyze, and export neural network models entirely in the browser. No Python. No server. No installation.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-1.0.0-3b82f6.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-0.5.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
-[**→ Live Demo**](https://forma-ml.vercel.app) · [Report Bug](https://github.com/Hussain004/Forma/issues) · [Request Feature](https://github.com/Hussain004/Forma/issues)
+[**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
 </div>
 
 ---
 
-## What is Forma?
+## Overview
 
-**Forma** is a fully static web application for loading trained neural network models, visualizing their computation graph interactively, and applying compression operations with immediate, per-layer feedback. Drag a `.onnx` file onto the canvas and the entire graph renders in the browser: nodes positioned automatically, every tensor edge labeled, each layer inspectable with a single click. No server required, no installation, no account.
+Forma is a fully client-side web application for loading, visualizing, and analyzing ONNX neural network models. Drop a `.onnx` file onto the canvas and the complete computation graph renders immediately: nodes laid out automatically with dagre, every tensor edge routed, each operator inspectable with a single click.
 
-The one popular visual tool, Netron, is read-only. It shows you the graph; you cannot act on it. Forma closes that gap: inspect a model, select a layer, quantize it, see the size and accuracy delta immediately, and export the result. All of this happens in the browser using WebAssembly.
-
-### Why Forma?
-
-| Problem | Forma Solution |
-|---|---|
-| Need a Python environment and CUDA to inspect a model | Works in any modern browser with zero install |
-| Netron is read-only, no compression controls | Interactive graph with planned per-layer quantization |
-| ONNX Runtime quantization requires a Python API | One-click dynamic INT8 from the UI (v2) |
-| Microsoft Olive needs JSON config files and a CLI | Visual, per-layer compression controls (v2 and v3) |
-| Can't easily share model structure with a teammate | Zero-install, send anyone the URL |
-| Model debugging requires reading raw ONNX protobuf | Click any node for full metadata: op type, parameter count, tensor shapes |
-| Students struggle to set up ML tooling | Drag and drop a `.onnx` file and the graph is there |
+All computation runs in the browser via WebAssembly. Models never leave the user's machine.
 
 ---
 
-## Features
+## Capabilities
 
-A condensed feature list is below. Detailed release notes will live in [CHANGELOG.md](CHANGELOG.md) as the project matures.
+### Graph Visualization
 
-### Graph visualization
+- Drag-and-drop `.onnx` loading with real-time progress indication
+- Automatic top-down layout via dagre; handles arbitrarily deep and wide graphs
+- Pan, zoom, and minimap navigation for large models
+- Distinct visual treatment for operator nodes versus input/output tensor nodes
+- Sensitivity coloring: node border color reflects parameter density (low to critical)
+- Filter nodes by operator type or name with live dimming of non-matching nodes
+- Jump to the first matching node by pressing Enter in the filter field
+- Keyboard shortcuts: `/` focuses the filter input, Escape clears and deselects
 
-- Drag-and-drop `.onnx` model loading directly in the browser
-- Automatic top-down layout via dagre: nodes positioned, edges routed, no manual arrangement
-- Pan and zoom across arbitrarily large graphs with no performance degradation
-- Distinct visual treatment for operator nodes and input/output tensor nodes
-- Amber-colored tensor flow edges on an engineering-terminal dot-grid background
-- Edge validation guard prevents dangling edges from reaching the layout engine
+### Model Inspection
 
-### Model inspection
+- Per-node Layer Inspector: operator type, parameter count, estimated weight size in MB, tensor shape annotations for all inputs and outputs
+- Op type histogram: model-wide breakdown of every operator category and its frequency, shown when no node is selected
+- INT8 size estimate: projected model size after dynamic quantization, displayed in the stats bar and per-node in the inspector
+- Inference benchmark: runs a forward pass in the WASM runtime and reports median latency across multiple trials
+- Node exclusion: mark individual nodes as excluded from analysis or export
 
-- Click any node to open the Layer Inspector panel
-- Per-node detail: operator type, parameter count, estimated weight size in MB, input and output tensor names
-- Single-select model: selecting one node deselects all others, pure and testable
-- Null-state placeholder when no node is selected, amber active border when a node is selected
+### Export
 
-### WASM inference pipeline
+- Download the original model buffer as exported by the WASM runtime
+- Export is performed off-thread; the UI remains responsive throughout
+
+### Engineering
 
 - Off-main-thread ONNX inference via `onnxruntime-web` in a dedicated Web Worker
-- The main thread stays at 60 fps during model loading and inference regardless of model size
-- Real-time load progress with stage labels: Loading model, Parsing graph, Ready
-- `SharedArrayBuffer` multi-threading enabled via `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers
-- Typed postMessage protocol between the hook and the worker: `LOAD_MODEL`, `RUN_INFERENCE`, `PROGRESS`, `ERROR`
-- ArrayBuffer transfer (zero-copy) from the main thread to the worker on model load
-
-### Planned compression tools (v2)
-
-- Whole-model dynamic INT8 quantization: one click, no calibration data required
-- Whole-model static INT8 quantization: with calibration dataset upload
-- Before/after comparison panel: file size delta, parameter count, output similarity score
-- Per-layer quantization exclusion via node selection in the graph
-- Sensitivity coloring: green/yellow/red heat map showing compression risk before you quantize
-- Local latency benchmark running both model versions on your device
-
-### Planned advanced tools (v3)
-
-- Structured pruning with a sparsity slider and live size estimate
-- Mixed-precision search: auto-suggest per-layer bit-widths given a size or accuracy target
-- GGUF export path for LLM quantization workflows
-- Side-by-side model diff mode
-
-### Roadmap
-
-| Phase | Status | Scope |
-|---|---|---|
-| 1 | Complete | ONNX model loading, graph visualization, per-node layer inspector |
-| 2 | Planned | Dynamic and static INT8 quantization, before/after comparison panel |
-| 3 | Planned | Per-layer selection and exclusion from quantization |
-| 4 | Planned | Sensitivity coloring, local latency benchmark |
-| 5 | Planned | Structured pruning, mixed-precision search |
-| 6 | Planned | Packaging, demo recording, public launch |
+- Schema-aware binary protobuf parser for full graph metadata extraction
+- Typed postMessage protocol between hook and worker with structured error propagation
+- `SharedArrayBuffer` multi-threading via COOP/COEP headers
+- 104 tests across 6 files; zero TypeScript errors on strict mode
 
 ---
 
 ## Quick Start
 
-### Use the Live Demo
+### Use the Live Application
 
 1. Open [**forma-ml.vercel.app**](https://forma-ml.vercel.app)
 2. Drag any `.onnx` model file onto the canvas
-3. Click any graph node to inspect it in the Layer Inspector panel
+3. Click any node to inspect it in the Layer Inspector panel
 
 ### Run Locally
 
@@ -115,25 +80,24 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+Open [http://localhost:5173](http://localhost:5173).
 
-**Requirements:** Node.js 18+, npm 9+. No Python, no CUDA, no native extensions.
+**Requirements:** Node.js 18+. No Python, no CUDA, no native extensions.
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology | Purpose |
-|---|---|---|
-| **Framework** | React 19 + TypeScript + Vite 8 | Component-based SPA with fast HMR |
-| **Graph rendering** | @xyflow/react (React Flow) | Interactive, pannable, zoomable computation graph |
-| **Layout** | dagre | Automatic top-down directed graph layout |
-| **ONNX execution** | onnxruntime-web (WASM) | Browser-side model loading and inference |
-| **Threading** | Web Worker + SharedArrayBuffer | Off-main-thread WASM with multi-threading support |
-| **Design system** | CSS custom properties | 4/8px grid, JetBrains Mono, Avionics Blueprint tokens |
-| **Testing** | Vitest + @testing-library/react | 46 tests across 3 files (unit and integration) |
-| **CI** | None yet | Planned: GitHub Actions on every PR |
-| **Deployment** | Vercel | Static SPA hosting with COOP/COEP headers via `vercel.json` |
+| Layer | Technology |
+|---|---|
+| Framework | React 19 + TypeScript (strict) + Vite 8 |
+| Graph rendering | @xyflow/react (React Flow v12) |
+| Layout | dagre |
+| ONNX execution | onnxruntime-web (WASM) in a Web Worker |
+| Protobuf parsing | Schema-aware binary decoder (no generated code) |
+| Design system | CSS custom properties, 4px grid, JetBrains Mono |
+| Testing | Vitest + @testing-library/react |
+| Deployment | Vercel (static SPA with COOP/COEP headers) |
 
 ---
 
@@ -142,84 +106,78 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 ```
 Browser (main thread)
 |
-|-- ModelDropzone (drag + click)
-|       |
-|       v
-|-- App.tsx
-|     useOnnxWorker hook         (status: idle -> loading -> ready -> running)
-|     SelectableGraph state      (pure helpers: selectNode, deselectAll, validateEdges)
-|     handleNodeSelect
++-- App.tsx
+|     useOnnxWorker hook    (status: idle -> loading -> ready -> benchmarking -> exporting)
+|     SelectableGraph state (pure immutable transforms: selectNode, filterGraph, excludeNode)
 |     |
-|     |---- GraphCanvas          React Flow + dagre layout, custom OperatorNode and IONode types
+|     +-- GraphCanvas       React Flow, dagre layout, OperatorNode + IONode, MiniMap
 |     |
-|     `---- LayerInspector       Selected node detail panel (op type, params, size, tensors)
+|     +-- LayerInspector    Per-node detail, op histogram when no node selected
+|     |
+|     +-- ModelDropzone     Drag-and-drop with progress bar
 |
-|                                postMessage (structured clone + ArrayBuffer transfer)
+|                           postMessage (ArrayBuffer transfer, zero-copy)
 |
-`-- onnxWorker.ts (Web Worker)
-      onnxruntime-web (WASM)
-      InferenceSession.create(ArrayBuffer)
-      parseOnnxGraph()  -> OnnxNode[] + OnnxEdge[]
-      session.run()     -> Float32Array outputs
++-- onnxWorker.ts (Web Worker)
+      onnxruntime-web WASM
+      parseOnnxGraph()  -> OnnxNode[], OnnxEdge[], graphInputs (shapes)
+      LOAD_MODEL        -> MODEL_LOADED + QUANTIZE_ESTIMATE
+      BENCHMARK         -> BENCHMARK_RESULT
+      EXPORT            -> EXPORT_RESULT (ArrayBuffer transfer)
 ```
 
-**Why a Web Worker?** ONNX model loading and inference are blocking WASM operations. Isolating them in a dedicated worker keeps the UI at 60 fps regardless of model size. The `useOnnxWorker` hook exposes a clean async interface: `loadModel(buffer, filename)` and `runInference(inputs, shapes)`, with typed status transitions (`idle -> loading -> ready -> running`).
+**Web Worker isolation:** WASM model loading and inference are blocking operations. Isolating them in a worker keeps the UI at 60 fps regardless of model size. The `useOnnxWorker` hook exposes a clean async interface with typed status transitions.
 
-**Why no backend?** Forma is intentionally serverless. The entire pipeline runs in the browser via `onnxruntime-web`. Zero infrastructure, zero server latency, and models never leave the user's machine.
+**No backend:** The entire pipeline runs in the browser. Zero infrastructure, zero server latency, models never leave the user's machine.
 
-**Why COOP/COEP headers?** `SharedArrayBuffer` is only available in cross-origin isolated contexts. Both `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` are required before browsers enable it. `onnxruntime-web` uses `SharedArrayBuffer` for its WASM threading backend. The `vercel.json` sets both headers on every response so this works transparently in production and in local dev.
+**COOP/COEP headers:** `SharedArrayBuffer` requires a cross-origin isolated context. Both `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` are set via `vercel.json` on every response.
 
 ---
 
 ## Design System
 
-Forma uses an Avionics Blueprint visual language: the aesthetic of a high-density physical engineering terminal, not a consumer web application.
+Avionics Blueprint visual language: the aesthetic of a high-density engineering terminal.
 
 | Token | Value | Usage |
 |---|---|---|
 | Background | `#12161A` | Application base |
 | Surface | `#16191C` | Panels, node cards |
 | Raised | `#1C2128` | Input/output tensor nodes |
-| Amber | `#FFB000` | Active tensor flows, selections, active borders |
-| Military green | `#4A5D23` | Success and confirmation states |
+| Amber | `#FFB000` | Active flows, selections, borders |
+| Green | `#52C57A` | Success and confirmation states |
 | Error | `#C0392B` | Parse failures, load errors |
-| Text primary | `#E8EAF0` | Labels, values |
-| Text secondary | `#8A8F9E` | Metadata, placeholders |
-| Font | JetBrains Mono | All text, all sizes |
+| Font | JetBrains Mono | All text at all sizes |
 | Base unit | 4px | All spacing is a multiple of 4 |
-| Border | 1px solid rgba(255,255,255,0.15) | All borders, no glow |
 | Border radius | 2px maximum | No rounded cards |
 
-Rules that are never broken: no box-shadows, no gradients, no border-radius above 2px, no Inter or Roboto, no hover-lift animations.
+No box-shadows. No gradients. No Inter or Roboto.
 
 ---
 
 ## Project Structure
 
 ```
-Forma/
-  src/
-    components/
-      GraphCanvas.tsx        React Flow canvas, dagre TB layout, custom OperatorNode and IONode types
-      LayerInspector.tsx     Right-panel detail view for a selected node
-      ModelDropzone.tsx      Full-viewport drag-and-drop with SVG crosshair idle state
-    hooks/
-      useOnnxWorker.ts       Typed React hook wrapping the ONNX Web Worker
-    lib/
-      onnxTypes.ts           Shared OnnxNode / OnnxEdge / OnnxGraph interfaces
-      onnxParser.ts          Extracts graph structure from an InferenceSession
-      graphUtils.ts          Pure helpers: toSelectableGraph, selectNode, deselectAll, validateEdges
-    workers/
-      onnxWorker.ts          Web Worker: handles LOAD_MODEL, RUN_INFERENCE, PROGRESS, ERROR
-    styles/
-      theme.css              CSS custom properties, all Avionics Blueprint design tokens
-    __tests__/
-      graph.test.ts          23 unit tests: selection model, edge validation, parameter sums
-      onnx.test.ts           15 unit tests: worker lifecycle, message contract, parser fallback
-      app.test.tsx           8 integration tests: load flow, single-select, error states
-  vercel.json                SPA rewrite rules and COOP/COEP headers for SharedArrayBuffer
-  vite.config.ts             Worker ES format, onnxruntime-web exclusion, Vitest configuration
-  FORMA_IMPLEMENTATION.md    Full product specification and phased build plan
+src/
+  components/
+    GraphCanvas.tsx       React Flow canvas, dagre layout, MiniMap, JumpController
+    LayerInspector.tsx    Per-node detail panel; model summary histogram
+    ModelDropzone.tsx     Drag-and-drop with progress indication
+  hooks/
+    useOnnxWorker.ts      Typed React hook wrapping the ONNX Web Worker
+  lib/
+    onnxTypes.ts          OnnxNode, OnnxEdge, OnnxGraph interfaces
+    onnxProtoParser.ts    Binary protobuf parser for ONNX ModelProto
+    graphUtils.ts         Pure graph transforms and utilities
+    quantize.ts           INT8 size estimation and formatting
+  workers/
+    onnxWorker.ts         Web Worker: LOAD_MODEL, BENCHMARK, EXPORT
+  __tests__/
+    graph.test.ts         Graph utilities and selection model
+    onnx.test.ts          Worker lifecycle and message contract
+    app.test.tsx          App integration: load flow, selection, error states
+    v3.test.ts            Filter, exclusion, INT8 estimation
+    v4.test.ts            Export reliability, quantize formatting, download
+    v0.5.test.ts          computeOpCounts, keyboard shortcuts, op histogram
 ```
 
 ---
@@ -227,45 +185,38 @@ Forma/
 ## Development
 
 ```bash
-# Start dev server (includes COOP/COEP headers for WASM SharedArrayBuffer)
-npm run dev
-
-# Run the full test suite (46 tests across 3 files)
-npm test
-
-# Type-check without building
-npx tsc -p tsconfig.app.json --noEmit
-
-# Production build
-npm run build
+npm run dev      # Dev server with COOP/COEP headers
+npm test         # 104 tests across 6 files
+npx tsc --noEmit # Type-check without building
+npm run build    # Production build
 ```
-
-Tests follow strict TDD discipline. The graph utility tests and ONNX pipeline tests were written before the implementations existed. The App integration tests run against a mocked Web Worker and verify the full UI state machine from model load through node selection.
 
 ---
 
-## Deployment
+## Releases
 
-The project deploys to Vercel with no additional configuration beyond connecting the repository. The `vercel.json` in the repository root handles two requirements automatically.
-
-**SPA routing:** all URL paths rewrite to `/index.html` so client-side navigation works on hard refresh.
-
-**Security headers:** `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` are set on every response. These are required by browsers before they enable `SharedArrayBuffer`, which `onnxruntime-web` uses for WASM threading. Without them, the ONNX worker silently falls back to single-threaded execution.
+| Version | Scope |
+|---|---|
+| 0.5.0 | MiniMap, jump-to-node, keyboard shortcuts, op type histogram |
+| 0.4.0 | INT8 estimate in UI, Download button, export promise hardening |
+| 0.3.0 | Graph filter, node exclusion, INT8 size estimate, model export |
+| 0.2.1 | Icon update, DEVELOPMENT.md |
+| 0.2.0 | Schema-aware protobuf parser, sensitivity coloring, inference benchmark |
+| 0.1.0 | MVP: ONNX loading, graph visualization, Layer Inspector |
 
 ---
 
 ## Limitations
 
-- **ONNX format only in v1.** PyTorch `.pt` and `.safetensors` files are not accepted directly. Convert to ONNX first using `torch.onnx.export`, then load the resulting `.onnx` file. Not all architectures survive that conversion cleanly.
-- **Graph internals depend on runtime exposure.** `onnxruntime-web` does not expose a stable public API for reading graph node metadata. Forma accesses WASM handler internals with a documented fallback path for when those internals are unavailable.
-- **Accuracy proxy, not ground truth.** The output similarity score planned for v2 is a fast proxy for quantization quality. It is not a substitute for evaluating on a real labeled validation set. Forma will label it clearly as an estimate.
-- **No format breadth.** Competing with Netron's support for TensorFlow, Keras, Core ML, Caffe, and a dozen other formats is not a near-term goal. Forma goes deep on ONNX first.
+- **ONNX only.** PyTorch `.pt`, `.safetensors`, and other formats are not supported. Convert to ONNX first using `torch.onnx.export`.
+- **Graph internals depend on runtime exposure.** `onnxruntime-web` does not expose a public API for reading graph node metadata. Forma uses a schema-aware binary parser as the primary path with a runtime-extraction fallback.
+- **INT8 estimates are projections.** The quantization size figures are computed analytically from parameter counts, not from running a quantizer. They are labeled as estimates.
 
 ---
 
 ## Acknowledgments
 
-- [ONNX Runtime](https://onnxruntime.ai/) for the WebAssembly inference backend that makes browser-side model execution possible
+- [ONNX Runtime](https://onnxruntime.ai/) for the WebAssembly inference backend
 - [React Flow](https://reactflow.dev/) for the interactive graph rendering primitives
 - [dagre](https://github.com/dagrejs/dagre) for automatic directed graph layout
 
@@ -273,8 +224,8 @@ The project deploys to Vercel with no additional configuration beyond connecting
 
 <div align="center">
 
-Built for ML engineers who want to understand and optimize their models without leaving the browser.
+Built for ML engineers who need to understand and optimize their models without leaving the browser.
 
-If Forma saves you time, consider giving it a star on [GitHub](https://github.com/Hussain004/Forma).
+If Forma is useful to you, consider [supporting development](https://donatr.ee/hussain/).
 
 </div>
