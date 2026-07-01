@@ -29,6 +29,10 @@ export function deselectAll(graph: SelectableGraph): SelectableGraph {
   return { ...graph, nodes: graph.nodes.map((n) => ({ ...n, selected: false })) }
 }
 
+export function setMultiSelection(graph: SelectableGraph, ids: Set<string>): SelectableGraph {
+  return { ...graph, nodes: graph.nodes.map((n) => ({ ...n, selected: ids.has(n.id) })) }
+}
+
 export function getSelectedNodes(graph: SelectableGraph): SelectableNode[] {
   return graph.nodes.filter((n) => n.selected)
 }
@@ -61,6 +65,14 @@ export function includeNode(graph: SelectableGraph, nodeId: string): SelectableG
     ...graph,
     nodes: graph.nodes.map((n) => (n.id === nodeId ? { ...n, excluded: false } : n)),
   }
+}
+
+export function bulkExclude(graph: SelectableGraph, ids: Set<string>): SelectableGraph {
+  return { ...graph, nodes: graph.nodes.map((n) => (ids.has(n.id) ? { ...n, excluded: true } : n)) }
+}
+
+export function bulkInclude(graph: SelectableGraph, ids: Set<string>): SelectableGraph {
+  return { ...graph, nodes: graph.nodes.map((n) => (ids.has(n.id) ? { ...n, excluded: false } : n)) }
 }
 
 export function computeOpCounts(nodes: OnnxNode[]): Record<string, number> {
