@@ -31,9 +31,9 @@ function traceAccent(role: TraceRole): string | null {
   return null
 }
 
-function applyDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
+function applyDagreLayout(nodes: Node[], edges: Edge[], layoutDir: 'TB' | 'LR' = 'TB'): Node[] {
   const g = new dagre.graphlib.Graph()
-  g.setGraph({ rankdir: 'TB', ranksep: 48, nodesep: 24 })
+  g.setGraph({ rankdir: layoutDir ?? 'TB', ranksep: 48, nodesep: 24 })
   g.setDefaultEdgeLabel(() => ({}))
   nodes.forEach((n) => g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT }))
   edges.forEach((e) => g.setEdge(e.source, e.target))
@@ -175,6 +175,7 @@ interface GraphCanvasProps {
   jumpToNodeId?: string | null
   traceAncestors?: Set<string>
   traceDescendants?: Set<string>
+  layoutDir?: 'TB' | 'LR'
 }
 
 function toFlowGraph(
@@ -183,6 +184,7 @@ function toFlowGraph(
   selectedNodeId: string | null,
   traceAncestors: Set<string>,
   traceDescendants: Set<string>,
+  layoutDir: 'TB' | 'LR' = 'TB',
 ) {
   const traceActive = selectedNodeId !== null && (traceAncestors.size > 0 || traceDescendants.size > 0)
   const rawNodes: Node[] = onnxNodes.map((n) => {
@@ -219,7 +221,7 @@ function toFlowGraph(
       style: { stroke: '#FFB000', strokeWidth: 1 },
     }))
 
-  return { nodes: applyDagreLayout(rawNodes, edges), edges }
+  return { nodes: applyDagreLayout(rawNodes, edges, layoutDir), edges }
 }
 
 function JumpController({ jumpToNodeId }: { jumpToNodeId?: string | null }) {
@@ -233,10 +235,10 @@ function JumpController({ jumpToNodeId }: { jumpToNodeId?: string | null }) {
 
 const EMPTY_TRACE: Set<string> = new Set()
 
-export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE }: GraphCanvasProps) {
+export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE, layoutDir = 'TB' }: GraphCanvasProps) {
   const computed = useMemo(
-    () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants),
-    [onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants],
+    () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir),
+    [onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir],
   )
 
   const [nodes, setNodes, onNodesChange] = useNodesState(computed.nodes)
