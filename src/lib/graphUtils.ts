@@ -47,7 +47,11 @@ export function filterGraph(graph: SelectableGraph, query: string): SelectableGr
   return {
     ...graph,
     nodes: graph.nodes.map((n) => {
-      const matches = n.opType.toLowerCase().includes(q) || n.id.toLowerCase().includes(q)
+      const matches =
+        n.opType.toLowerCase().includes(q) ||
+        n.id.toLowerCase().includes(q) ||
+        n.inputs.some(t => t.toLowerCase().includes(q)) ||
+        n.outputs.some(t => t.toLowerCase().includes(q))
       return { ...n, dimmed: !matches }
     }),
   }

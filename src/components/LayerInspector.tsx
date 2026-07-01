@@ -248,6 +248,8 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
       `Parameters: ${node.paramCount.toLocaleString()}`,
       `Size:       ${node.estimatedSizeMB.toFixed(3)} MB`,
     ]
+    const attrs = Object.entries(node.attributes ?? {})
+    if (attrs.length > 0) attrs.forEach(([k, v]) => lines.push(`${k}: ${v}`))
     if (node.inputs.length > 0) lines.push(`Inputs:     ${node.inputs.join(', ')}`)
     if (node.outputs.length > 0) lines.push(`Outputs:    ${node.outputs.join(', ')}`)
     navigator.clipboard.writeText(lines.join('\n')).catch(() => {})
@@ -323,6 +325,15 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
             {node.excluded ? 'YES' : 'NO'}
           </button>
         </div>
+      )}
+
+      {Object.keys(node.attributes ?? {}).length > 0 && (
+        <>
+          {sectionHeader('Attributes')}
+          {Object.entries(node.attributes).map(([k, v]) => (
+            <Row key={k} label={k} value={String(v)} />
+          ))}
+        </>
       )}
 
       {node.inputShapes && node.inputShapes.length > 0 && (
