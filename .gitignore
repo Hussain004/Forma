@@ -15,8 +15,9 @@ dist-ssr
 # WASM runtime files (copied from node_modules by prebuild script)
 public/ort-wasm-simd-threaded.*
 
-# Implementation planning document
+# Internal development docs (for assistant use only)
 FORMA_IMPLEMENTATION.md
+DEVELOPMENT.md
 
 # Local test models (not committed)
 test_files/
