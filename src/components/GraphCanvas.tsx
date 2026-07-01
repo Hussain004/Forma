@@ -4,10 +4,12 @@ import {
   Background,
   BackgroundVariant,
   Controls,
+  MiniMap,
   Handle,
   Position,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   type Node,
   type Edge,
   type NodeProps,
@@ -151,6 +153,7 @@ interface GraphCanvasProps {
   onnxEdges: OnnxEdge[]
   selectedNodeId: string | null
   onNodeSelect: (nodeId: string) => void
+  jumpToNodeId?: string | null
 }
 
 function toFlowGraph(onnxNodes: OnnxNode[], onnxEdges: OnnxEdge[], selectedNodeId: string | null) {
@@ -186,7 +189,16 @@ function toFlowGraph(onnxNodes: OnnxNode[], onnxEdges: OnnxEdge[], selectedNodeI
   return { nodes: applyDagreLayout(rawNodes, edges), edges }
 }
 
-export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect }: GraphCanvasProps) {
+function JumpController({ jumpToNodeId }: { jumpToNodeId?: string | null }) {
+  const { fitView } = useReactFlow()
+  useEffect(() => {
+    if (!jumpToNodeId) return
+    fitView({ nodes: [{ id: jumpToNodeId }], duration: 400, padding: 0.5 })
+  }, [jumpToNodeId, fitView])
+  return null
+}
+
+export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, jumpToNodeId }: GraphCanvasProps) {
   const computed = useMemo(
     () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId),
     [onnxNodes, onnxEdges, selectedNodeId],
@@ -224,6 +236,18 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             boxShadow: 'none',
           }}
         />
+        <MiniMap
+          nodeColor={() => '#FFB000'}
+          maskColor="rgba(18,22,26,0.8)"
+          style={{
+            background: '#12161A',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 2,
+          }}
+          pannable
+          zoomable
+        />
+        <JumpController jumpToNodeId={jumpToNodeId} />
       </ReactFlow>
     </div>
   )

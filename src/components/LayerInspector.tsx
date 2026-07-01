@@ -5,6 +5,7 @@ interface LayerInspectorProps {
   node: OnnxNode | null
   onToggleExclude?: (nodeId: string) => void
   quantizeEstimate?: { ratio: number } | null
+  modelStats?: { opCounts: Record<string, number>; totalNodes: number } | null
 }
 
 const labelStyle: React.CSSProperties = {
@@ -68,8 +69,36 @@ function sensitivityColor(params: number): string {
   return '#52C57A'
 }
 
-export function LayerInspector({ node, onToggleExclude, quantizeEstimate }: LayerInspectorProps) {
+export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats }: LayerInspectorProps) {
   if (!node) {
+    if (!modelStats) {
+      return (
+        <div
+          style={{
+            background: 'var(--bg-surface)',
+            borderLeft: '2px solid rgba(255,255,255,0.1)',
+            padding: 16,
+            height: '100%',
+            minWidth: 260,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <span
+            style={{
+              color: 'var(--text-secondary)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              fontSize: 12,
+            }}
+          >
+            Select a node
+          </span>
+        </div>
+      )
+    }
+    const sorted = Object.entries(modelStats.opCounts).sort((a, b) => b[1] - a[1])
     return (
       <div
         style={{
@@ -78,21 +107,26 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate }: Laye
           padding: 16,
           height: '100%',
           minWidth: 260,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          overflowY: 'auto',
+          boxSizing: 'border-box',
         }}
       >
-        <span
-          style={{
-            color: 'var(--text-secondary)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.1em',
-            fontSize: 12,
-          }}
-        >
-          Select a node
-        </span>
+        <div style={{ color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 10, marginBottom: 12 }}>
+          Model Summary
+        </div>
+        <div style={rowStyle}>
+          <span style={labelStyle}>TOTAL NODES</span>
+          <span style={valueStyle}>{modelStats.totalNodes.toLocaleString()}</span>
+        </div>
+        <div style={{ color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 10, margin: '16px 0 4px' }}>
+          Op Types
+        </div>
+        {sorted.map(([opType, count]) => (
+          <div key={opType} style={rowStyle}>
+            <span style={labelStyle}>{opType}</span>
+            <span style={valueStyle}>{count}</span>
+          </div>
+        ))}
       </div>
     )
   }
