@@ -18,18 +18,17 @@ import dagre from 'dagre'
 import '@xyflow/react/dist/style.css'
 import type { OnnxNode, OnnxEdge } from '../lib/onnxTypes'
 import { formatShape } from '../lib/onnxProtoParser'
-import { validateEdges } from '../lib/graphUtils'
+import { validateEdges, opCategoryColor } from '../lib/graphUtils'
 
 const NODE_WIDTH = 180
 const NODE_HEIGHT = 64
 
-// Sensitivity tier based on parameter count
-function sensitivityBorder(paramCount: number, selected: boolean): string {
-  if (selected) return '1px solid #FFB000'
-  if (paramCount > 10_000_000) return '1px solid #C0392B'
-  if (paramCount > 1_000_000)  return '1px solid #E67E22'
-  if (paramCount > 100_000)    return '1px solid #8A7A00'
-  return '1px solid rgba(255,255,255,0.15)'
+type TraceRole = 'ancestor' | 'descendant' | null
+
+function traceAccent(role: TraceRole): string | null {
+  if (role === 'ancestor') return '#3498DB'
+  if (role === 'descendant') return '#52C57A'
+  return null
 }
 
 function applyDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
@@ -53,8 +52,8 @@ const handleStyle = {
   border: 'none',
 }
 
-type OperatorData = { opType: string; paramCount: number; shapeLabel: string; dimmed: boolean; excluded: boolean }
-type IOData = { label: string; shapeLabel: string; dimmed: boolean; excluded: boolean }
+type OperatorData = { opType: string; paramCount: number; shapeLabel: string; dimmed: boolean; excluded: boolean; traceRole: TraceRole; traceActive: boolean }
+type IOData = { label: string; shapeLabel: string; dimmed: boolean; excluded: boolean; traceRole: TraceRole; traceActive: boolean }
 
 const strikeStyle: React.CSSProperties = {
   position: 'absolute',
@@ -67,10 +66,19 @@ const strikeStyle: React.CSSProperties = {
 }
 
 function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
-  const opacity = data.excluded ? 0.5 : data.dimmed ? 0.25 : 1
+  const opacity = data.excluded
+    ? 0.5
+    : data.dimmed
+      ? 0.25
+      : data.traceActive && !selected && data.traceRole === null
+        ? 0.4
+        : 1
   const border = data.excluded
     ? '1px solid rgba(255,255,255,0.08)'
-    : sensitivityBorder(data.paramCount, selected)
+    : '1px solid rgba(255,255,255,0.12)'
+  const accent = data.excluded
+    ? 'rgba(255,255,255,0.08)'
+    : traceAccent(data.traceRole) ?? (selected ? '#FFB000' : opCategoryColor(data.opType))
   return (
     <div
       style={{
@@ -89,6 +97,7 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
         opacity,
       }}
     >
+      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: accent, borderRadius: '2px 0 0 2px' }} />
       {data.excluded && <div style={strikeStyle} />}
       <Handle type="target" position={Position.Top} style={handleStyle} />
       <div style={{ color: '#E8EAF0', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -108,7 +117,16 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
 }
 
 function IONode({ data, selected }: NodeProps<Node<IOData>>) {
-  const opacity = data.excluded ? 0.5 : data.dimmed ? 0.25 : 1
+  const opacity = data.excluded
+    ? 0.5
+    : data.dimmed
+      ? 0.25
+      : data.traceActive && !selected && data.traceRole === null
+        ? 0.4
+        : 1
+  const ioAccent = data.excluded
+    ? 'rgba(255,255,255,0.08)'
+    : traceAccent(data.traceRole) ?? '#FFB000'
   return (
     <div
       style={{
@@ -119,7 +137,7 @@ function IONode({ data, selected }: NodeProps<Node<IOData>>) {
         border: data.excluded
           ? '1px solid rgba(255,255,255,0.08)'
           : selected ? '1px solid #FFB000' : '1px solid rgba(255,255,255,0.15)',
-        borderLeft: data.excluded ? '1px solid rgba(255,255,255,0.08)' : '2px solid #FFB000',
+        borderLeft: data.excluded ? '1px solid rgba(255,255,255,0.08)' : `2px solid ${ioAccent}`,
         borderRadius: 2,
         padding: '8px 12px',
         display: 'flex',
@@ -154,22 +172,36 @@ interface GraphCanvasProps {
   selectedNodeId: string | null
   onNodeSelect: (nodeId: string) => void
   jumpToNodeId?: string | null
+  traceAncestors?: Set<string>
+  traceDescendants?: Set<string>
 }
 
-function toFlowGraph(onnxNodes: OnnxNode[], onnxEdges: OnnxEdge[], selectedNodeId: string | null) {
+function toFlowGraph(
+  onnxNodes: OnnxNode[],
+  onnxEdges: OnnxEdge[],
+  selectedNodeId: string | null,
+  traceAncestors: Set<string>,
+  traceDescendants: Set<string>,
+) {
+  const traceActive = selectedNodeId !== null && (traceAncestors.size > 0 || traceDescendants.size > 0)
   const rawNodes: Node[] = onnxNodes.map((n) => {
     const isIO = IO_OPS.has(n.opType)
     const shapeLabel = isIO
       ? formatShape(n.outputShapes?.[0] ?? n.inputShapes?.[0])
       : formatShape(n.outputShapes?.[0])
+    const traceRole: TraceRole = traceAncestors.has(n.id)
+      ? 'ancestor'
+      : traceDescendants.has(n.id)
+        ? 'descendant'
+        : null
     return {
       id: n.id,
       type: isIO ? 'io' : 'operator',
       position: { x: 0, y: 0 },
       selected: n.id === selectedNodeId,
       data: isIO
-        ? { label: n.outputs[0] ?? n.inputs[0] ?? n.opType, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false }
-        : { opType: n.opType, paramCount: n.paramCount, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false },
+        ? { label: n.outputs[0] ?? n.inputs[0] ?? n.opType, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive }
+        : { opType: n.opType, paramCount: n.paramCount, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive },
     }
   })
 
@@ -198,10 +230,12 @@ function JumpController({ jumpToNodeId }: { jumpToNodeId?: string | null }) {
   return null
 }
 
-export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, jumpToNodeId }: GraphCanvasProps) {
+const EMPTY_TRACE: Set<string> = new Set()
+
+export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE }: GraphCanvasProps) {
   const computed = useMemo(
-    () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId),
-    [onnxNodes, onnxEdges, selectedNodeId],
+    () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants),
+    [onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants],
   )
 
   const [nodes, setNodes, onNodesChange] = useNodesState(computed.nodes)
