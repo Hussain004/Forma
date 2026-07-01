@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { parseAttrEdit } from './lib/attrUtils'
 import { ModelDropzone } from './components/ModelDropzone'
 import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
@@ -226,7 +227,11 @@ function App() {
   const [showDropzone, setShowDropzone] = useState(true)
   const [panelWidth, setPanelWidth] = useState(280)
   const [jumpToNodeId, setJumpToNodeId] = useState<string | null>(null)
+  const [attrOverrides, setAttrOverrides] = useState<Map<string, Record<string, string | number>>>(new Map())
+  const [undoStack, setUndoStack] = useState<Array<{ nodeId: string; attrName: string; prevValue: string | number }>>([])
   const filterInputRef = useRef<HTMLInputElement>(null)
+  const undoStackRef = useRef(undoStack)
+  undoStackRef.current = undoStack
   const isResizing = useRef(false)
   const resizeStartX = useRef(0)
   const resizeStartWidth = useRef(0)
@@ -257,12 +262,29 @@ function App() {
     setExcludedNodeIds(new Set())
     setSelectedNodeIds(new Set())
     setSelectedNodeId(null)
+    setAttrOverrides(new Map())
+    setUndoStack([])
     if (graph) setShowDropzone(false)
   }, [graph])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName
+      if (e.key === 'z' && (e.ctrlKey || e.metaKey) && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        e.preventDefault()
+        const stack = undoStackRef.current
+        if (stack.length === 0) return
+        const last = stack[stack.length - 1]
+        setUndoStack(prev => prev.slice(0, -1))
+        setAttrOverrides(prev => {
+          const next = new Map(prev)
+          const existing = { ...(next.get(last.nodeId) ?? {}) }
+          existing[last.attrName] = last.prevValue
+          next.set(last.nodeId, existing)
+          return next
+        })
+        return
+      }
       if (e.key === 'Escape') {
         setFilterQuery('')
         setShowDropdown(false)
@@ -280,9 +302,22 @@ function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
+  const graphWithOverrides = useMemo((): SelectableGraph | null => {
+    if (!selectableGraph || attrOverrides.size === 0) return selectableGraph
+    return {
+      ...selectableGraph,
+      nodes: selectableGraph.nodes.map(n => {
+        const overrides = attrOverrides.get(n.id)
+        if (!overrides) return n
+        const isModified = Object.entries(overrides).some(([k, v]) => v !== n.attributes[k])
+        return { ...n, attributes: { ...n.attributes, ...overrides }, isModified }
+      }),
+    }
+  }, [selectableGraph, attrOverrides])
+
   const filteredGraph = useMemo(
-    () => (selectableGraph ? filterGraph(selectableGraph, filterQuery) : null),
-    [selectableGraph, filterQuery],
+    () => (graphWithOverrides ? filterGraph(graphWithOverrides, filterQuery) : null),
+    [graphWithOverrides, filterQuery],
   )
 
   const dropdownResults = useMemo(() => {
@@ -424,6 +459,23 @@ function App() {
     setSelectableGraph((sg) => sg ? (willExclude ? excludeNode(sg, nodeId) : includeNode(sg, nodeId)) : sg)
   }
 
+  const handleAttrEdit = (nodeId: string, attrName: string, newValue: string | number) => {
+    const overrides = attrOverrides.get(nodeId)
+    const originalNode = selectableGraph?.nodes.find(n => n.id === nodeId)
+    const prevValue = overrides?.[attrName] ?? originalNode?.attributes[attrName]
+    const resolved = prevValue !== undefined && typeof prevValue !== 'boolean' ? prevValue : ''
+    const parsed = parseAttrEdit(String(newValue), resolved)
+    if (parsed === resolved) return
+    setUndoStack(prev => [...prev, { nodeId, attrName, prevValue: resolved }])
+    setAttrOverrides(prev => {
+      const next = new Map(prev)
+      const existing = { ...(next.get(nodeId) ?? {}) }
+      existing[attrName] = newValue
+      next.set(nodeId, existing)
+      return next
+    })
+  }
+
   const handleReset = () => {
     setShowDropzone(true)
     setSelectableGraph(null)
@@ -523,7 +575,7 @@ function App() {
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               />
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} />
+                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onAttrEdit={handleAttrEdit} />
               </div>
             </div>
           </div>
