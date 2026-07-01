@@ -65,6 +65,7 @@ export function parseOnnxGraph(buffer: ArrayBuffer, modelName: string): OnnxGrap
 
     nodes.push({
       id,
+      name: rawNode.name || undefined,
       opType: rawNode.opType,
       inputs: rawNode.inputs,
       outputs: rawNode.outputs,
@@ -112,5 +113,5 @@ export function parseOnnxGraph(buffer: ArrayBuffer, modelName: string): OnnxGrap
   const totalParams = nodes.reduce((sum, n) => sum + n.paramCount, 0)
   const totalSizeMB = nodes.reduce((sum, n) => sum + n.estimatedSizeMB, 0)
 
-  return { nodes, edges, modelName, totalParams, totalSizeMB, graphInputs }
+  return { nodes, edges, modelName, totalParams, totalSizeMB, graphInputs, metadata: proto.metadata }
 }

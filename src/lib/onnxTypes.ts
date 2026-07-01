@@ -1,9 +1,10 @@
-import type { OnnxDim, ParsedValueInfo } from './onnxProtoParser'
+import type { OnnxDim, ParsedValueInfo, ModelMetadata } from './onnxProtoParser'
 
-export type { OnnxDim, ParsedValueInfo }
+export type { OnnxDim, ParsedValueInfo, ModelMetadata }
 
 export interface OnnxNode {
   id: string
+  name?: string
   opType: string
   inputs: string[]
   outputs: string[]
@@ -31,4 +32,5 @@ export interface OnnxGraph {
   totalParams: number
   totalSizeMB: number
   graphInputs?: ParsedValueInfo[]
+  metadata?: ModelMetadata
 }

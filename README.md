@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-0.9.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-0.10.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -44,12 +44,13 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 
 ### Model Inspection
 
-- Click any node to open the Layer Inspector with operator type, parameter count, estimated weight size, tensor shape annotations, and full attribute listing (kernel size, strides, epsilon, group, auto_pad, and every other op attribute stored in the model)
+- Click any node to open the Layer Inspector with operator type, node name, parameter count, estimated weight size, tensor shape annotations, and full attribute listing (kernel size, strides, epsilon, group, auto_pad, and every other op attribute stored in the model)
 - Ctrl/Meta+click for multi-select: build a selection across multiple nodes simultaneously
 - Aggregate inspector: combined parameter count, total size, and op type breakdown when multiple nodes are selected
 - Bulk exclude/include: EXCLUDE ALL and INCLUDE ALL buttons apply to the full selection at once
 - Ancestor/descendant trace: selecting a node highlights all upstream producers (blue accent) and downstream consumers (green accent), dimming unrelated nodes
 - Op type histogram with graph depth: model-wide operator breakdown sorted by frequency, plus longest-path depth, shown when no node is selected
+- Model metadata panel: producer name and version, opset version, and IR version shown in the summary view
 - Category legend in model summary showing only operator categories present in the loaded model
 - INT8 size estimate: projected model size after dynamic quantization, in the stats bar and per-node in the inspector
 - Inference benchmark: forward pass in the WASM runtime with median latency across multiple trials
@@ -68,7 +69,7 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Schema-aware binary protobuf parser for full graph metadata extraction
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
-- 157 tests across 10 files; zero TypeScript errors on strict mode
+- 172 tests across 11 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -191,6 +192,7 @@ src/
     v0.7.test.ts          setMultiSelection, bulkExclude/bulkInclude, aggregate inspector
     v0.8.test.ts          layout toggle, search dropdown, clipboard copy, benchmark types
     v0.9.test.ts          attribute viewer, tensor name search, edge shape labels
+    v0.10.test.ts         model metadata, node name, producer/opset/IR version parsing
 ```
 
 ---
@@ -199,7 +201,7 @@ src/
 
 ```bash
 npm run dev      # Dev server with COOP/COEP headers
-npm test         # 157 tests across 10 files
+npm test         # 172 tests across 11 files
 npx tsc --noEmit # Type-check without building
 npm run build    # Production build
 ```
@@ -210,6 +212,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 0.10.0 | Model metadata (producer, opset, IR version), node names, 3-color favicon |
 | 0.9.0 | Attribute viewer, tensor name search, edge shape labels, intermediate tensor shapes |
 | 0.8.0 | Layout toggle (TB/LR), search dropdown, clipboard copy, benchmark type fix |
 | 0.7.0 | Multi-select, aggregate inspector, bulk exclude/include, hover tooltip |
