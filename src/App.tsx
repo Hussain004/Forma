@@ -3,7 +3,7 @@ import { ModelDropzone } from './components/ModelDropzone'
 import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
 import { useOnnxWorker } from './hooks/useOnnxWorker'
-import { toSelectableGraph, selectNode, deselectAll, filterGraph, excludeNode, includeNode, computeOpCounts, type SelectableGraph } from './lib/graphUtils'
+import { toSelectableGraph, selectNode, deselectAll, filterGraph, excludeNode, includeNode, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, type SelectableGraph } from './lib/graphUtils'
 import { formatQuantizeEstimate } from './lib/quantize'
 import type { OnnxNode } from './lib/onnxTypes'
 import type { QuantizeEstimate } from './hooks/useOnnxWorker'
@@ -209,11 +209,23 @@ function App() {
   const modelStats = useMemo(() => {
     if (!selectableGraph) return null
     const opCounts = computeOpCounts(selectableGraph.nodes)
-    return { opCounts, totalNodes: selectableGraph.nodes.filter(n => n.opType !== 'Input' && n.opType !== 'Output').length }
+    return {
+      opCounts,
+      totalNodes: selectableGraph.nodes.filter(n => n.opType !== 'Input' && n.opType !== 'Output').length,
+      graphDepth: computeGraphDepth(selectableGraph),
+    }
   }, [selectableGraph])
 
   const selectedNode: OnnxNode | null = filteredGraph?.nodes.find((n) => n.selected) ?? null
   const selectedNodeId: string | null = selectedNode?.id ?? null
+
+  const { ancestors, descendants } = useMemo(() => {
+    if (!selectedNodeId || !selectableGraph) return { ancestors: new Set<string>(), descendants: new Set<string>() }
+    return {
+      ancestors: getAncestors(selectableGraph, selectedNodeId),
+      descendants: getDescendants(selectableGraph, selectedNodeId),
+    }
+  }, [selectedNodeId, selectableGraph])
 
   const handleFilterChange = (value: string) => {
     setFilterQuery(value)
@@ -314,6 +326,8 @@ function App() {
                 selectedNodeId={selectedNodeId}
                 onNodeSelect={handleNodeSelect}
                 jumpToNodeId={jumpToNodeId}
+                traceAncestors={ancestors}
+                traceDescendants={descendants}
               />
             </div>
             <div style={{ width: panelWidth, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.1)', height: '100%', position: 'relative', display: 'flex' }}>

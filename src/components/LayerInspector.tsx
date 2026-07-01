@@ -1,11 +1,30 @@
 import type { OnnxNode } from '../lib/onnxTypes'
 import { formatShape } from '../lib/onnxProtoParser'
+import { opCategoryColor } from '../lib/graphUtils'
 
 interface LayerInspectorProps {
   node: OnnxNode | null
   onToggleExclude?: (nodeId: string) => void
   quantizeEstimate?: { ratio: number } | null
-  modelStats?: { opCounts: Record<string, number>; totalNodes: number } | null
+  modelStats?: { opCounts: Record<string, number>; totalNodes: number; graphDepth?: number } | null
+}
+
+const CATEGORY_LEGEND: { name: string; color: string }[] = [
+  { name: 'Convolution', color: '#C0392B' },
+  { name: 'Activation', color: '#52C57A' },
+  { name: 'Normalization', color: '#3498DB' },
+  { name: 'Linear/MatMul', color: '#E67E22' },
+  { name: 'Pooling', color: '#9B59B6' },
+  { name: 'Reshape/Transpose', color: '#1ABC9C' },
+  { name: 'Other', color: 'rgba(255,255,255,0.15)' },
+]
+
+const swatchStyle: React.CSSProperties = {
+  width: 8,
+  height: 8,
+  borderRadius: 1,
+  flexShrink: 0,
+  display: 'inline-block',
 }
 
 const labelStyle: React.CSSProperties = {
@@ -99,6 +118,8 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
       )
     }
     const sorted = Object.entries(modelStats.opCounts).sort((a, b) => b[1] - a[1])
+    const presentColors = new Set(sorted.map(([opType]) => opCategoryColor(opType)))
+    const legend = CATEGORY_LEGEND.filter((c) => presentColors.has(c.color))
     return (
       <div
         style={{
@@ -118,15 +139,37 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           <span style={labelStyle}>TOTAL NODES</span>
           <span style={valueStyle}>{modelStats.totalNodes.toLocaleString()}</span>
         </div>
+        {modelStats.graphDepth !== undefined && (
+          <div style={rowStyle}>
+            <span style={labelStyle}>DEPTH</span>
+            <span style={valueStyle}>{modelStats.graphDepth.toLocaleString()}</span>
+          </div>
+        )}
         <div style={{ color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 10, margin: '16px 0 4px' }}>
           Op Types
         </div>
         {sorted.map(([opType, count]) => (
           <div key={opType} style={rowStyle}>
-            <span style={labelStyle}>{opType}</span>
+            <span style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ ...swatchStyle, background: opCategoryColor(opType) }} />
+              {opType}
+            </span>
             <span style={valueStyle}>{count}</span>
           </div>
         ))}
+        {legend.length > 0 && (
+          <>
+            <div style={{ color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 10, margin: '16px 0 4px' }}>
+              Categories
+            </div>
+            {legend.map((c) => (
+              <div key={c.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                <span style={{ ...swatchStyle, background: c.color }} />
+                <span style={{ color: 'var(--text-secondary)', fontSize: 11, letterSpacing: '0.04em' }}>{c.name}</span>
+              </div>
+            ))}
+          </>
+        )}
       </div>
     )
   }
