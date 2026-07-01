@@ -214,12 +214,20 @@ function toFlowGraph(
   )
   const edges: Edge[] = onnxEdges
     .filter(e => !invalidIds.has(e.id) && nodeIdSet.has(e.source) && nodeIdSet.has(e.target))
-    .map(e => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      style: { stroke: '#FFB000', strokeWidth: 1 },
-    }))
+    .map(e => {
+      const adjacent = selectedNodeId && (e.source === selectedNodeId || e.target === selectedNodeId)
+      const shapeLabel = adjacent && e.shape ? formatShape(e.shape) : undefined
+      return {
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        label: shapeLabel,
+        labelStyle: { fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#5A6070' },
+        labelBgStyle: { fill: '#12161A', fillOpacity: 0.85 },
+        labelBgPadding: [3, 4] as [number, number],
+        style: { stroke: '#FFB000', strokeWidth: 1 },
+      }
+    })
 
   return { nodes: applyDagreLayout(rawNodes, edges, layoutDir), edges }
 }

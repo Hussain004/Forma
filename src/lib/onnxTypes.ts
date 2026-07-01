@@ -21,6 +21,7 @@ export interface OnnxEdge {
   source: string
   target: string
   label?: string
+  shape?: OnnxDim[]
 }
 
 export interface OnnxGraph {

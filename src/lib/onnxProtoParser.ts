@@ -18,12 +18,22 @@ const GRAPH_NAME = 2
 const GRAPH_INIT = 5
 const GRAPH_INPUT = 11
 const GRAPH_OUTPUT = 12
+const GRAPH_VALUE_INFO = 13  // intermediate tensor shapes
 
 // NodeProto fields
 const NODE_INPUT = 1
 const NODE_OUTPUT = 2
 const NODE_NAME = 3
 const NODE_OP_TYPE = 4
+const NODE_ATTR = 5
+
+// AttributeProto fields
+const ATTR_NAME = 1
+const ATTR_I = 3    // int64 scalar
+const ATTR_F = 4    // float32 scalar
+const ATTR_S = 6    // string (bytes)
+const ATTR_FLOATS = 7  // packed repeated float32
+const ATTR_INTS = 8    // packed repeated int64
 
 // TensorProto fields (initializers)
 const INIT_DIMS = 1
@@ -86,6 +96,7 @@ export interface ParsedNode {
   outputs: string[]
   name: string
   opType: string
+  attributes: Record<string, string | number>
 }
 
 export interface ParsedGraph {
@@ -94,6 +105,7 @@ export interface ParsedGraph {
   initializers: ParsedInitializer[]
   inputs: ParsedValueInfo[]
   outputs: ParsedValueInfo[]
+  valueInfo: ParsedValueInfo[]  // intermediate tensor shapes
 }
 
 // ---- Low-level reader ----
@@ -135,6 +147,12 @@ class ProtoReader {
   }
 
   skip(len: number) { this.pos += len }
+
+  readFloat32(): number {
+    const view = new DataView(this.buf.buffer, this.buf.byteOffset + this.pos, 4)
+    this.pos += 4
+    return view.getFloat32(0, true)
+  }
 
   readTag(): { field: number; wire: number } | null {
     if (this.done) return null
@@ -297,11 +315,65 @@ function parseInitializer(r: ProtoReader): ParsedInitializer {
   return { name, dims, elemType, elemCount, sizeMB }
 }
 
+function parseAttribute(r: ProtoReader): { name: string; value: string | number } {
+  let attrName = ''
+  let iVal: number | undefined
+  let fVal: number | undefined
+  let sVal: string | undefined
+  let intsVal: number[] | undefined
+  let floatsVal: number[] | undefined
+
+  while (!r.done) {
+    const tag = r.readTag()
+    if (!tag) break
+    if (tag.wire === WIRE_LEN) {
+      const len = r.readVarint()
+      if (tag.field === ATTR_NAME) {
+        attrName = r.readString(len)
+      } else if (tag.field === ATTR_S) {
+        sVal = r.readString(len)
+      } else if (tag.field === ATTR_INTS) {
+        const sub = r.subReader(len)
+        intsVal = []
+        while (!sub.done) {
+          const v = sub.readVarint()
+          intsVal.push(v > 0x7FFFFFFF ? v - 0x100000000 : v)
+        }
+      } else if (tag.field === ATTR_FLOATS) {
+        const sub = r.subReader(len)
+        floatsVal = []
+        while (sub.pos + 4 <= sub.buf.length) {
+          floatsVal.push(parseFloat(sub.readFloat32().toPrecision(5)))
+        }
+      } else {
+        r.skip(len)
+      }
+    } else if (tag.wire === WIRE_VARINT) {
+      const v = r.readVarint()
+      if (tag.field === ATTR_I) iVal = v > 0x7FFFFFFF ? v - 0x100000000 : v
+    } else if (tag.wire === WIRE_32BIT) {
+      if (tag.field === ATTR_F) fVal = parseFloat(r.readFloat32().toPrecision(5))
+      else r.skip(4)
+    } else {
+      r.skipField(tag.wire)
+    }
+  }
+
+  let value: string | number = ''
+  if (intsVal !== undefined) value = '[' + intsVal.join(', ') + ']'
+  else if (floatsVal !== undefined) value = '[' + floatsVal.join(', ') + ']'
+  else if (sVal !== undefined) value = sVal
+  else if (iVal !== undefined) value = iVal
+  else if (fVal !== undefined) value = fVal
+  return { name: attrName, value }
+}
+
 function parseNode(r: ProtoReader): ParsedNode {
   const inputs: string[] = []
   const outputs: string[] = []
   let name = ''
   let opType = 'Unknown'
+  const attributes: Record<string, string | number> = {}
   while (!r.done) {
     const tag = r.readTag()
     if (!tag) break
@@ -311,12 +383,16 @@ function parseNode(r: ProtoReader): ParsedNode {
       else if (tag.field === NODE_OUTPUT) outputs.push(r.readString(len))
       else if (tag.field === NODE_NAME) name = r.readString(len)
       else if (tag.field === NODE_OP_TYPE) opType = r.readString(len)
+      else if (tag.field === NODE_ATTR) {
+        const attr = parseAttribute(r.subReader(len))
+        if (attr.name && attr.value !== '') attributes[attr.name] = attr.value
+      }
       else r.skip(len)
     } else {
       r.skipField(tag.wire)
     }
   }
-  return { inputs, outputs, name, opType }
+  return { inputs, outputs, name, opType, attributes }
 }
 
 function parseGraph(r: ProtoReader): ParsedGraph {
@@ -325,6 +401,7 @@ function parseGraph(r: ProtoReader): ParsedGraph {
   const initializers: ParsedInitializer[] = []
   const inputs: ParsedValueInfo[] = []
   const outputs: ParsedValueInfo[] = []
+  const valueInfo: ParsedValueInfo[] = []
 
   while (!r.done) {
     const tag = r.readTag()
@@ -336,13 +413,14 @@ function parseGraph(r: ProtoReader): ParsedGraph {
       else if (tag.field === GRAPH_INIT) initializers.push(parseInitializer(r.subReader(len)))
       else if (tag.field === GRAPH_INPUT) inputs.push(parseValueInfo(r.subReader(len)))
       else if (tag.field === GRAPH_OUTPUT) outputs.push(parseValueInfo(r.subReader(len)))
+      else if (tag.field === GRAPH_VALUE_INFO) valueInfo.push(parseValueInfo(r.subReader(len)))
       else r.skip(len)
     } else {
       r.skipField(tag.wire)
     }
   }
 
-  return { name: graphName, nodes, initializers, inputs, outputs }
+  return { name: graphName, nodes, initializers, inputs, outputs, valueInfo }
 }
 
 // ---- Public API ----
@@ -367,7 +445,7 @@ export function parseOnnxProto(buffer: ArrayBuffer): ParsedGraph {
     }
   }
 
-  return graph ?? { name: '', nodes: [], initializers: [], inputs: [], outputs: [] }
+  return graph ?? { name: '', nodes: [], initializers: [], inputs: [], outputs: [], valueInfo: [] }
 }
 
 export function formatShape(dims: OnnxDim[] | undefined): string {

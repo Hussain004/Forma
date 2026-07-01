@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-0.8.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-0.9.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -37,13 +37,14 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Distinct visual treatment for operator nodes versus input/output tensor nodes
 - Op category coloring: each node's left accent bar indicates its operator category (Convolution, Activation, Normalization, Linear, Pooling, Reshape, and more)
 - Search dropdown: live-filtered results with keyboard navigation (arrow keys, Enter to jump, Escape to dismiss)
-- Filter nodes by operator type or name with live dimming of non-matching nodes
+- Filter nodes by operator type, name, or tensor name with live dimming of non-matching nodes
 - Keyboard shortcuts: `/` focuses the filter input, Escape clears and deselects
 - Hover tooltip: instant op type, parameter count, and output shape on mouse-over without clicking
+- Edge shape labels: selecting a node shows tensor shapes on all edges directly connected to it
 
 ### Model Inspection
 
-- Click any node to open the Layer Inspector with operator type, parameter count, estimated weight size, and tensor shape annotations for all inputs and outputs
+- Click any node to open the Layer Inspector with operator type, parameter count, estimated weight size, tensor shape annotations, and full attribute listing (kernel size, strides, epsilon, group, auto_pad, and every other op attribute stored in the model)
 - Ctrl/Meta+click for multi-select: build a selection across multiple nodes simultaneously
 - Aggregate inspector: combined parameter count, total size, and op type breakdown when multiple nodes are selected
 - Bulk exclude/include: EXCLUDE ALL and INCLUDE ALL buttons apply to the full selection at once
@@ -67,7 +68,7 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Schema-aware binary protobuf parser for full graph metadata extraction
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
-- 144 tests across 9 files; zero TypeScript errors on strict mode
+- 157 tests across 10 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -189,6 +190,7 @@ src/
     v0.6.test.ts          opCategoryColor, getAncestors/getDescendants, computeGraphDepth
     v0.7.test.ts          setMultiSelection, bulkExclude/bulkInclude, aggregate inspector
     v0.8.test.ts          layout toggle, search dropdown, clipboard copy, benchmark types
+    v0.9.test.ts          attribute viewer, tensor name search, edge shape labels
 ```
 
 ---
@@ -197,7 +199,7 @@ src/
 
 ```bash
 npm run dev      # Dev server with COOP/COEP headers
-npm test         # 144 tests across 9 files
+npm test         # 157 tests across 10 files
 npx tsc --noEmit # Type-check without building
 npm run build    # Production build
 ```
@@ -208,6 +210,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 0.9.0 | Attribute viewer, tensor name search, edge shape labels, intermediate tensor shapes |
 | 0.8.0 | Layout toggle (TB/LR), search dropdown, clipboard copy, benchmark type fix |
 | 0.7.0 | Multi-select, aggregate inspector, bulk exclude/include, hover tooltip |
 | 0.6.0 | Op category coloring, ancestor/descendant trace, graph depth stat |

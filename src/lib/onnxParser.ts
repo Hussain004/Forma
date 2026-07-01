@@ -18,12 +18,9 @@ export function parseOnnxGraph(buffer: ArrayBuffer, modelName: string): OnnxGrap
     initSizes.set(init.name, init.sizeMB)
   }
 
-  // Build a map of tensor name -> shape from graph inputs/outputs and value_info
+  // Build a map of tensor name -> shape from graph inputs, outputs, and intermediate value_info
   const tensorShapes = new Map<string, import('./onnxProtoParser').OnnxDim[]>()
-  for (const vi of proto.inputs) {
-    if (vi.name && vi.shape) tensorShapes.set(vi.name, vi.shape)
-  }
-  for (const vi of proto.outputs) {
+  for (const vi of [...proto.inputs, ...proto.outputs, ...proto.valueInfo]) {
     if (vi.name && vi.shape) tensorShapes.set(vi.name, vi.shape)
   }
 
@@ -71,7 +68,7 @@ export function parseOnnxGraph(buffer: ArrayBuffer, modelName: string): OnnxGrap
       opType: rawNode.opType,
       inputs: rawNode.inputs,
       outputs: rawNode.outputs,
-      attributes: {},
+      attributes: rawNode.attributes,
       paramCount,
       estimatedSizeMB,
       inputShapes: inputShapes.length > 0 ? inputShapes : undefined,
@@ -83,7 +80,7 @@ export function parseOnnxGraph(buffer: ArrayBuffer, modelName: string): OnnxGrap
       if (initNames.has(inp)) continue
       const sourceId = tensorProducer.get(inp)
       if (sourceId) {
-        edges.push({ id: `${sourceId}->${id}@${inp}`, source: sourceId, target: id, label: inp })
+        edges.push({ id: `${sourceId}->${id}@${inp}`, source: sourceId, target: id, label: inp, shape: tensorShapes.get(inp) })
       }
     }
 
@@ -108,7 +105,7 @@ export function parseOnnxGraph(buffer: ArrayBuffer, modelName: string): OnnxGrap
       inputShapes: vi.shape ? [vi.shape] : undefined,
     })
     if (sourceId) {
-      edges.push({ id: `${sourceId}->${id}@${vi.name}`, source: sourceId, target: id, label: vi.name })
+      edges.push({ id: `${sourceId}->${id}@${vi.name}`, source: sourceId, target: id, label: vi.name, shape: tensorShapes.get(vi.name) })
     }
   })
 
