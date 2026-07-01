@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-0.7.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-0.8.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -32,12 +32,12 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 ### Graph Visualization
 
 - Drag-and-drop `.onnx` loading with real-time progress indication
-- Automatic top-down layout via dagre; handles arbitrarily deep and wide graphs
+- Automatic layout via dagre with TB (top-down) and LR (left-right) toggle
 - Pan, zoom, and minimap navigation for large models
 - Distinct visual treatment for operator nodes versus input/output tensor nodes
 - Op category coloring: each node's left accent bar indicates its operator category (Convolution, Activation, Normalization, Linear, Pooling, Reshape, and more)
+- Search dropdown: live-filtered results with keyboard navigation (arrow keys, Enter to jump, Escape to dismiss)
 - Filter nodes by operator type or name with live dimming of non-matching nodes
-- Jump to the first matching node by pressing Enter in the filter field
 - Keyboard shortcuts: `/` focuses the filter input, Escape clears and deselects
 - Hover tooltip: instant op type, parameter count, and output shape on mouse-over without clicking
 
@@ -57,7 +57,9 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 ### Export
 
 - Download the original model buffer as exported by the WASM runtime
+- Exported filename strips the original extension cleanly (e.g. `model_export.onnx`, never `model.onnx_export.onnx`)
 - Export is performed off-thread; the UI remains responsive throughout
+- Copy node metadata to clipboard with a single button press in the Layer Inspector
 
 ### Engineering
 
@@ -65,7 +67,7 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Schema-aware binary protobuf parser for full graph metadata extraction
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
-- 134 tests across 8 files; zero TypeScript errors on strict mode
+- 144 tests across 9 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -186,6 +188,7 @@ src/
     v0.5.test.ts          computeOpCounts, keyboard shortcuts, op histogram
     v0.6.test.ts          opCategoryColor, getAncestors/getDescendants, computeGraphDepth
     v0.7.test.ts          setMultiSelection, bulkExclude/bulkInclude, aggregate inspector
+    v0.8.test.ts          layout toggle, search dropdown, clipboard copy, benchmark types
 ```
 
 ---
@@ -194,7 +197,7 @@ src/
 
 ```bash
 npm run dev      # Dev server with COOP/COEP headers
-npm test         # 134 tests across 8 files
+npm test         # 144 tests across 9 files
 npx tsc --noEmit # Type-check without building
 npm run build    # Production build
 ```
@@ -205,6 +208,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 0.8.0 | Layout toggle (TB/LR), search dropdown, clipboard copy, benchmark type fix |
 | 0.7.0 | Multi-select, aggregate inspector, bulk exclude/include, hover tooltip |
 | 0.6.0 | Op category coloring, ancestor/descendant trace, graph depth stat |
 | 0.5.1 | Stacked layers favicon, README rewrite |

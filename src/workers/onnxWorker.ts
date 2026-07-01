@@ -27,7 +27,24 @@ const ctx = self as unknown as {
 
 let session: ort.InferenceSession | null = null
 let benchmarkInputShapes: Record<string, number[]> = {}
+let benchmarkInputTypes: Record<string, number> = {}
 let exportBuffer: ArrayBuffer | null = null
+
+function makeBenchmarkTensor(elemType: number, size: number, shape: number[]): ort.Tensor {
+  switch (elemType) {
+    case 7:  return new ort.Tensor('int64',   new BigInt64Array(size), shape)
+    case 6:  return new ort.Tensor('int32',   new Int32Array(size),    shape)
+    case 12: return new ort.Tensor('uint32',  new Uint32Array(size),   shape)
+    case 13: return new ort.Tensor('uint64',  new BigUint64Array(size),shape)
+    case 2:  return new ort.Tensor('uint8',   new Uint8Array(size),    shape)
+    case 3:  return new ort.Tensor('int8',    new Int8Array(size),     shape)
+    case 5:  return new ort.Tensor('int16',   new Int16Array(size),    shape)
+    case 9:  return new ort.Tensor('bool',    new Uint8Array(size),    shape)
+    case 11: return new ort.Tensor('float64', new Float64Array(size),  shape)
+    case 10: return new ort.Tensor('float16', new Uint16Array(size),   shape)
+    default: return new ort.Tensor('float32', new Float32Array(size),  shape)
+  }
+}
 
 ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
   const cmd = event.data
@@ -45,12 +62,14 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
       // Parse graph topology from raw protobuf (reliable, no WASM internals)
       const graph = parseOnnxGraph(bufferForParsing, cmd.payload.filename)
 
-      // Store parsed input shapes for benchmark (symbolic dims -> 1)
+      // Store parsed input shapes and types for benchmark (symbolic dims -> 1)
       benchmarkInputShapes = {}
+      benchmarkInputTypes = {}
       for (const vi of graph.graphInputs ?? []) {
         if (vi.name && vi.shape && vi.shape.length > 0) {
           benchmarkInputShapes[vi.name] = vi.shape.map(d => ('value' in d ? (d.value || 1) : 1))
         }
+        if (vi.name) benchmarkInputTypes[vi.name] = vi.elemType ?? 1
       }
 
       ctx.postMessage({ type: 'PROGRESS', payload: { stage: 'Loading WASM runtime', percent: 50 } })
@@ -87,7 +106,7 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
         const rawShape = benchmarkInputShapes[name] ?? [1]
         const shape = rawShape.map(d => (d < 1 ? 1 : d))
         const size = shape.reduce((a, b) => a * b, 1)
-        feeds[name] = new ort.Tensor('float32', new Float32Array(size), shape)
+        feeds[name] = makeBenchmarkTensor(benchmarkInputTypes[name] ?? 1, size, shape)
       }
 
       const times: number[] = []
