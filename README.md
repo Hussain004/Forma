@@ -40,12 +40,6 @@ The one popular visual tool, Netron, is read-only. It shows you the graph; you c
 
 ---
 
-## Demo
-
-A live demo is available at [**forma-ml.vercel.app**](https://forma-ml.vercel.app). Drag any `.onnx` model file onto the canvas and the graph renders immediately. A recorded walkthrough is planned for the v1.1 release.
-
----
-
 ## Features
 
 A condensed feature list is below. Detailed release notes will live in [CHANGELOG.md](CHANGELOG.md) as the project matures.
