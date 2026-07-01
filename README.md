@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-0.5.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-0.7.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -35,18 +35,24 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Automatic top-down layout via dagre; handles arbitrarily deep and wide graphs
 - Pan, zoom, and minimap navigation for large models
 - Distinct visual treatment for operator nodes versus input/output tensor nodes
-- Sensitivity coloring: node border color reflects parameter density (low to critical)
+- Op category coloring: each node's left accent bar indicates its operator category (Convolution, Activation, Normalization, Linear, Pooling, Reshape, and more)
 - Filter nodes by operator type or name with live dimming of non-matching nodes
 - Jump to the first matching node by pressing Enter in the filter field
 - Keyboard shortcuts: `/` focuses the filter input, Escape clears and deselects
+- Hover tooltip: instant op type, parameter count, and output shape on mouse-over without clicking
 
 ### Model Inspection
 
-- Per-node Layer Inspector: operator type, parameter count, estimated weight size in MB, tensor shape annotations for all inputs and outputs
-- Op type histogram: model-wide breakdown of every operator category and its frequency, shown when no node is selected
-- INT8 size estimate: projected model size after dynamic quantization, displayed in the stats bar and per-node in the inspector
-- Inference benchmark: runs a forward pass in the WASM runtime and reports median latency across multiple trials
-- Node exclusion: mark individual nodes as excluded from analysis or export
+- Click any node to open the Layer Inspector with operator type, parameter count, estimated weight size, and tensor shape annotations for all inputs and outputs
+- Ctrl/Meta+click for multi-select: build a selection across multiple nodes simultaneously
+- Aggregate inspector: combined parameter count, total size, and op type breakdown when multiple nodes are selected
+- Bulk exclude/include: EXCLUDE ALL and INCLUDE ALL buttons apply to the full selection at once
+- Ancestor/descendant trace: selecting a node highlights all upstream producers (blue accent) and downstream consumers (green accent), dimming unrelated nodes
+- Op type histogram with graph depth: model-wide operator breakdown sorted by frequency, plus longest-path depth, shown when no node is selected
+- Category legend in model summary showing only operator categories present in the loaded model
+- INT8 size estimate: projected model size after dynamic quantization, in the stats bar and per-node in the inspector
+- Inference benchmark: forward pass in the WASM runtime with median latency across multiple trials
+- Node exclusion: mark individual nodes as excluded; visual strikethrough applied to excluded cards
 
 ### Export
 
@@ -59,7 +65,7 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Schema-aware binary protobuf parser for full graph metadata extraction
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
-- 104 tests across 6 files; zero TypeScript errors on strict mode
+- 134 tests across 8 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -110,9 +116,9 @@ Browser (main thread)
 |     useOnnxWorker hook    (status: idle -> loading -> ready -> benchmarking -> exporting)
 |     SelectableGraph state (pure immutable transforms: selectNode, filterGraph, excludeNode)
 |     |
-|     +-- GraphCanvas       React Flow, dagre layout, OperatorNode + IONode, MiniMap
+|     +-- GraphCanvas       React Flow, dagre layout, OperatorNode + IONode, MiniMap, hover tooltip
 |     |
-|     +-- LayerInspector    Per-node detail, op histogram when no node selected
+|     +-- LayerInspector    Per-node detail, multi-select aggregate, model summary histogram
 |     |
 |     +-- ModelDropzone     Drag-and-drop with progress bar
 |
@@ -159,15 +165,15 @@ No box-shadows. No gradients. No Inter or Roboto.
 ```
 src/
   components/
-    GraphCanvas.tsx       React Flow canvas, dagre layout, MiniMap, JumpController
-    LayerInspector.tsx    Per-node detail panel; model summary histogram
+    GraphCanvas.tsx       React Flow canvas, dagre layout, MiniMap, JumpController, hover tooltip
+    LayerInspector.tsx    Per-node detail, aggregate multi-select view, model summary histogram
     ModelDropzone.tsx     Drag-and-drop with progress indication
   hooks/
     useOnnxWorker.ts      Typed React hook wrapping the ONNX Web Worker
   lib/
     onnxTypes.ts          OnnxNode, OnnxEdge, OnnxGraph interfaces
     onnxProtoParser.ts    Binary protobuf parser for ONNX ModelProto
-    graphUtils.ts         Pure graph transforms and utilities
+    graphUtils.ts         Pure graph transforms: selection, filter, exclusion, tracing, depth
     quantize.ts           INT8 size estimation and formatting
   workers/
     onnxWorker.ts         Web Worker: LOAD_MODEL, BENCHMARK, EXPORT
@@ -178,6 +184,8 @@ src/
     v3.test.ts            Filter, exclusion, INT8 estimation
     v4.test.ts            Export reliability, quantize formatting, download
     v0.5.test.ts          computeOpCounts, keyboard shortcuts, op histogram
+    v0.6.test.ts          opCategoryColor, getAncestors/getDescendants, computeGraphDepth
+    v0.7.test.ts          setMultiSelection, bulkExclude/bulkInclude, aggregate inspector
 ```
 
 ---
@@ -186,7 +194,7 @@ src/
 
 ```bash
 npm run dev      # Dev server with COOP/COEP headers
-npm test         # 104 tests across 6 files
+npm test         # 134 tests across 8 files
 npx tsc --noEmit # Type-check without building
 npm run build    # Production build
 ```
@@ -197,10 +205,13 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 0.7.0 | Multi-select, aggregate inspector, bulk exclude/include, hover tooltip |
+| 0.6.0 | Op category coloring, ancestor/descendant trace, graph depth stat |
+| 0.5.1 | Stacked layers favicon, README rewrite |
 | 0.5.0 | MiniMap, jump-to-node, keyboard shortcuts, op type histogram |
 | 0.4.0 | INT8 estimate in UI, Download button, export promise hardening |
 | 0.3.0 | Graph filter, node exclusion, INT8 size estimate, model export |
-| 0.2.1 | Icon update, DEVELOPMENT.md |
+| 0.2.1 | Icon update, session guide |
 | 0.2.0 | Schema-aware protobuf parser, sensitivity coloring, inference benchmark |
 | 0.1.0 | MVP: ONNX loading, graph visualization, Layer Inspector |
 
