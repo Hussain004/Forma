@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-0.10.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -45,6 +45,9 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 ### Model Inspection
 
 - Click any node to open the Layer Inspector with operator type, node name, parameter count, estimated weight size, tensor shape annotations, and full attribute listing (kernel size, strides, epsilon, group, auto_pad, and every other op attribute stored in the model)
+- Inline attribute editing: click any attribute value to edit it directly; integer, float, string, and array attributes are all editable with type-aware parsing
+- Ctrl+Z undo: step back through attribute changes one at a time
+- Modified badge: edited nodes are marked with a "MOD" indicator in the canvas and a "Modified" label in the inspector
 - Ctrl/Meta+click for multi-select: build a selection across multiple nodes simultaneously
 - Aggregate inspector: combined parameter count, total size, and op type breakdown when multiple nodes are selected
 - Bulk exclude/include: EXCLUDE ALL and INCLUDE ALL buttons apply to the full selection at once
@@ -69,7 +72,7 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Schema-aware binary protobuf parser for full graph metadata extraction
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
-- 172 tests across 11 files; zero TypeScript errors on strict mode
+- 191 tests across 12 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -193,6 +196,7 @@ src/
     v0.8.test.ts          layout toggle, search dropdown, clipboard copy, benchmark types
     v0.9.test.ts          attribute viewer, tensor name search, edge shape labels
     v0.10.test.ts         model metadata, node name, producer/opset/IR version parsing
+    v1.0.test.ts          attribute type inference, value parsing, inline editing, MOD badge
 ```
 
 ---
@@ -212,6 +216,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 1.0.0 | Inline attribute editing, Ctrl+Z undo, MOD badge on edited nodes |
 | 0.10.0 | Model metadata (producer, opset, IR version), node names, 3-color favicon |
 | 0.9.0 | Attribute viewer, tensor name search, edge shape labels, intermediate tensor shapes |
 | 0.8.0 | Layout toggle (TB/LR), search dropdown, clipboard copy, benchmark type fix |
