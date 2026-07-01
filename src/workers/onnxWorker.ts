@@ -84,7 +84,8 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
 
       const feeds: Record<string, ort.Tensor> = {}
       for (const name of session.inputNames) {
-        const shape = benchmarkInputShapes[name] ?? [1]
+        const rawShape = benchmarkInputShapes[name] ?? [1]
+        const shape = rawShape.map(d => (d < 1 ? 1 : d))
         const size = shape.reduce((a, b) => a * b, 1)
         feeds[name] = new ort.Tensor('float32', new Float32Array(size), shape)
       }

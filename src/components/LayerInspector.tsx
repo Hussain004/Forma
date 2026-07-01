@@ -4,6 +4,7 @@ import { formatShape } from '../lib/onnxProtoParser'
 interface LayerInspectorProps {
   node: OnnxNode | null
   onToggleExclude?: (nodeId: string) => void
+  quantizeEstimate?: { ratio: number } | null
 }
 
 const labelStyle: React.CSSProperties = {
@@ -67,7 +68,7 @@ function sensitivityColor(params: number): string {
   return '#52C57A'
 }
 
-export function LayerInspector({ node, onToggleExclude }: LayerInspectorProps) {
+export function LayerInspector({ node, onToggleExclude, quantizeEstimate }: LayerInspectorProps) {
   if (!node) {
     return (
       <div
@@ -113,6 +114,11 @@ export function LayerInspector({ node, onToggleExclude }: LayerInspectorProps) {
       <Row label="OP TYPE" value={node.opType} />
       <Row label="PARAMETERS" value={node.paramCount.toLocaleString()} />
       <Row label="EST. SIZE" value={`${node.estimatedSizeMB.toFixed(3)} MB`} />
+      {node.estimatedSizeMB > 0 && quantizeEstimate && quantizeEstimate.ratio > 0 && (
+        <div style={{ color: 'var(--text-dim)', fontSize: 10, padding: '2px 0 0 108px', letterSpacing: '0.04em' }}>
+          {`INT8: ${(node.estimatedSizeMB / quantizeEstimate.ratio).toFixed(3)} MB`}
+        </div>
+      )}
 
       {isCompute && node.paramCount > 0 && (
         <div style={{ ...rowStyle, alignItems: 'center' }}>
@@ -127,17 +133,18 @@ export function LayerInspector({ node, onToggleExclude }: LayerInspectorProps) {
         <div style={{ ...rowStyle, alignItems: 'center' }}>
           <span style={labelStyle}>EXCLUDED</span>
           <button
-            onClick={() => onToggleExclude?.(node.id)}
+            onClick={() => node && onToggleExclude?.(node.id)}
             style={{
               background: 'none',
-              border: node.excluded ? '1px solid #FFB000' : '1px solid rgba(255,255,255,0.2)',
+              border: node.excluded ? '1px solid #FFB000' : '1px solid rgba(255,255,255,0.15)',
               borderRadius: 2,
               color: node.excluded ? '#FFB000' : 'var(--text-dim)',
               fontFamily: 'var(--font-mono)',
-              fontSize: 11,
+              fontSize: 10,
               letterSpacing: '0.06em',
-              padding: '2px 12px',
+              padding: '2px 10px',
               cursor: 'pointer',
+              textTransform: 'uppercase',
             }}
           >
             {node.excluded ? 'YES' : 'NO'}

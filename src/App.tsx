@@ -4,7 +4,9 @@ import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
 import { useOnnxWorker } from './hooks/useOnnxWorker'
 import { toSelectableGraph, selectNode, deselectAll, filterGraph, excludeNode, includeNode, type SelectableGraph } from './lib/graphUtils'
+import { formatQuantizeEstimate } from './lib/quantize'
 import type { OnnxNode } from './lib/onnxTypes'
+import type { QuantizeEstimate } from './hooks/useOnnxWorker'
 import './index.css'
 
 function formatNumber(n: number): string {
@@ -18,14 +20,18 @@ interface StatsBarProps {
   totalParams: number
   totalSizeMB: number
   nodeCount: number
+  quantizeEstimate: QuantizeEstimate | null
   filterQuery: string
   onFilterChange: (value: string) => void
   onBenchmark: () => void
   benchmarkLabel: string | null
+  onDownload: () => void
+  canDownload: boolean
   onReset: () => void
 }
 
-function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, filterQuery, onFilterChange, onBenchmark, benchmarkLabel, onReset }: StatsBarProps) {
+function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, onBenchmark, benchmarkLabel, onDownload, canDownload, onReset }: StatsBarProps) {
+  const quantizeLabel = formatQuantizeEstimate(quantizeEstimate)
   return (
     <div style={{
       height: 36,
@@ -47,6 +53,11 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, filterQuery,
       </span>
       <span>{formatNumber(totalParams)} PARAMS</span>
       <span>{totalSizeMB.toFixed(1)} MB</span>
+      {quantizeLabel && (
+        <span style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.06em' }}>
+          {quantizeLabel}
+        </span>
+      )}
       <span>{nodeCount} NODES</span>
       <input
         type="text"
@@ -86,6 +97,25 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, filterQuery,
         >
           Benchmark
         </button>
+        {canDownload && (
+          <button
+            onClick={onDownload}
+            style={{
+              background: 'none',
+              border: '1px solid rgba(255,255,255,0.2)',
+              borderRadius: 2,
+              color: 'var(--text-primary)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              letterSpacing: '0.06em',
+              padding: '4px 16px',
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+            }}
+          >
+            Download
+          </button>
+        )}
         <button
           onClick={onReset}
           style={{
@@ -109,7 +139,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, filterQuery,
 }
 
 function App() {
-  const { loadModel, runBenchmark, graph, status, error, progress, benchmarkResult } = useOnnxWorker()
+  const { loadModel, runBenchmark, exportModel, graph, status, error, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
   const [selectableGraph, setSelectableGraph] = useState<SelectableGraph | null>(null)
   const [filterQuery, setFilterQuery] = useState('')
   const [excludedNodeIds, setExcludedNodeIds] = useState<Set<string>>(new Set())
@@ -179,6 +209,18 @@ function App() {
     setSelectableGraph(null)
   }
 
+  const handleDownload = () => {
+    exportModel().then((buf) => {
+      const blob = new Blob([buf], { type: 'application/octet-stream' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = (graph?.modelName ?? 'model') + '_export.onnx'
+      a.click()
+      URL.revokeObjectURL(url)
+    })
+  }
+
   const benchmarkLabel = benchmarkResult
     ? `avg ${benchmarkResult.avgMs.toFixed(1)} ms / min ${benchmarkResult.minMs.toFixed(1)} ms / max ${benchmarkResult.maxMs.toFixed(1)} ms (${benchmarkResult.runs} runs)`
     : status === 'benchmarking' ? 'Benchmarking...' : null
@@ -210,10 +252,13 @@ function App() {
             totalParams={graph?.totalParams ?? 0}
             totalSizeMB={graph?.totalSizeMB ?? 0}
             nodeCount={filteredGraph.nodes.filter(n => n.opType !== 'Input' && n.opType !== 'Output').length}
+            quantizeEstimate={quantizeEstimate}
             filterQuery={filterQuery}
             onFilterChange={setFilterQuery}
             onBenchmark={() => runBenchmark(10)}
             benchmarkLabel={benchmarkLabel}
+            onDownload={handleDownload}
+            canDownload={status === 'ready'}
             onReset={handleReset}
           />
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -242,7 +287,7 @@ function App() {
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               />
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} />
+                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} />
               </div>
             </div>
           </div>

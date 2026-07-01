@@ -165,8 +165,8 @@ function toFlowGraph(onnxNodes: OnnxNode[], onnxEdges: OnnxEdge[], selectedNodeI
       position: { x: 0, y: 0 },
       selected: n.id === selectedNodeId,
       data: isIO
-        ? { label: n.outputs[0] ?? n.inputs[0] ?? n.opType, shapeLabel, dimmed: !!n.dimmed, excluded: !!n.excluded }
-        : { opType: n.opType, paramCount: n.paramCount, shapeLabel, dimmed: !!n.dimmed, excluded: !!n.excluded },
+        ? { label: n.outputs[0] ?? n.inputs[0] ?? n.opType, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false }
+        : { opType: n.opType, paramCount: n.paramCount, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false },
     }
   })
 

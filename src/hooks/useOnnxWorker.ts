@@ -39,6 +39,7 @@ export function useOnnxWorker() {
   const benchmarkResolverRef = useRef<((r: BenchmarkResult) => void) | null>(null)
   const benchmarkRejecterRef = useRef<((err: Error) => void) | null>(null)
   const exportResolve = useRef<((buf: ArrayBuffer) => void) | null>(null)
+  const exportReject = useRef<((err: Error) => void) | null>(null)
 
   useEffect(() => {
     const worker = new Worker(new URL('../workers/onnxWorker.ts', import.meta.url), { type: 'module' })
@@ -57,6 +58,7 @@ export function useOnnxWorker() {
         if (exportResolve.current) {
           exportResolve.current(msg.payload)
           exportResolve.current = null
+          exportReject.current = null
         }
         setStatus('ready')
       } else if (msg.type === 'INFERENCE_RESULT') {
@@ -71,6 +73,11 @@ export function useOnnxWorker() {
         benchmarkRejecterRef.current = null
         setStatus('ready')
       } else if (msg.type === 'ERROR') {
+        if (exportReject.current) {
+          exportReject.current(new Error(msg.payload))
+          exportResolve.current = null
+          exportReject.current = null
+        }
         setError(msg.payload)
         setStatus('error')
         inferenceRejecterRef.current?.(new Error(msg.payload))
@@ -88,6 +95,11 @@ export function useOnnxWorker() {
   }, [])
 
   const loadModel = useCallback((buffer: ArrayBuffer, filename: string) => {
+    if (exportReject.current) {
+      exportReject.current(new Error('Model replaced'))
+      exportResolve.current = null
+      exportReject.current = null
+    }
     setStatus('loading')
     setError(null)
     setGraph(null)
@@ -120,6 +132,7 @@ export function useOnnxWorker() {
     return new Promise((resolve, reject) => {
       if (!workerRef.current) { reject(new Error('No worker')); return }
       exportResolve.current = resolve
+      exportReject.current = reject
       setStatus('exporting')
       workerRef.current.postMessage({ type: 'EXPORT' })
     })
