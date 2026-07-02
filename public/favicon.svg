@@ -1,18 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <rect width="64" height="64" fill="#12161A"/>
 
-  <!-- Bottom slab: amber (Conv / base layer) -->
+  <!-- Bottom slab: amber (half-width=28, half-depth=10, thickness=6, level y=46) -->
   <polygon points="60,46 32,56 32,62 60,52" fill="#AA6600"/>
   <polygon points="4,46 32,56 32,62 4,52" fill="#FFB000"/>
   <polygon points="4,46 32,56 60,46 32,36" fill="#FFD060"/>
 
-  <!-- Middle slab: blue (Normalization layer) -->
-  <polygon points="52,30 32,40 32,46 52,36" fill="#1B5E8A"/>
-  <polygon points="12,30 32,40 32,46 12,36" fill="#3498DB"/>
-  <polygon points="12,30 32,40 52,30 32,20" fill="#62C4F5"/>
+  <!-- Middle slab: blue (same geometry, shifted up 6px) -->
+  <polygon points="60,40 32,50 32,56 60,46" fill="#1B5E8A"/>
+  <polygon points="4,40 32,50 32,56 4,46" fill="#3498DB"/>
+  <polygon points="4,40 32,50 60,40 32,30" fill="#62C4F5"/>
 
-  <!-- Top slab: green (Activation layer) -->
-  <polygon points="44,14 32,24 32,30 44,20" fill="#28784A"/>
-  <polygon points="20,14 32,24 32,30 20,20" fill="#52C57A"/>
-  <polygon points="20,14 32,24 44,14 32,4" fill="#7AEBA0"/>
+  <!-- Top slab: green (same geometry, shifted up another 6px) -->
+  <polygon points="60,34 32,44 32,50 60,40" fill="#28784A"/>
+  <polygon points="4,34 32,44 32,50 4,40" fill="#52C57A"/>
+  <polygon points="4,34 32,44 60,34 32,24" fill="#7AEBA0"/>
 </svg>
