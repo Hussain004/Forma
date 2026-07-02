@@ -1,8 +1,18 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type CSSProperties } from 'react'
 import type { OnnxNode, ModelMetadata } from '../lib/onnxTypes'
 import { formatShape } from '../lib/onnxProtoParser'
 import { opCategoryColor } from '../lib/graphUtils'
-import { inferAttrType, parseAttrEdit } from '../lib/attrUtils'
+import { parseAttrEdit } from '../lib/attrUtils'
+
+function PencilIcon({ color }: { color: string }) {
+  return (
+    <svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true" style={{ flexShrink: 0, display: 'block' }}>
+      <polygon points="1.5,7 6,2.5 7,3.5 2.5,8" fill={color} />
+      <polygon points="1.5,7 2,8.5 2.5,8" fill={color} />
+      <polygon points="6,2.5 7,1.5 8,2.5 7,3.5" fill={color} />
+    </svg>
+  )
+}
 
 interface LayerInspectorProps {
   node: OnnxNode | null
@@ -114,6 +124,7 @@ function sensitivityColor(params: number): string {
 export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onAttrEdit }: LayerInspectorProps) {
   const [editingAttr, setEditingAttr] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
+  const [hoveredAttr, setHoveredAttr] = useState<string | null>(null)
   const cancelEditRef = useRef(false)
 
   useEffect(() => {
@@ -400,9 +411,14 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           {Object.entries(node.attributes).map(([k, v]) => {
             const original = v as string | number
             const isEditing = editingAttr === k
-            const isArray = inferAttrType(original) === 'array'
+            const isHovered = hoveredAttr === k
+            const pencilColor = isHovered ? '#FFB000' : '#3A4050'
+            const hoverRowStyle: CSSProperties = {
+              ...rowStyle,
+              background: isHovered && !isEditing ? 'rgba(255,176,0,0.04)' : 'transparent',
+            }
             return (
-              <div key={k} style={rowStyle}>
+              <div key={k} style={hoverRowStyle}>
                 <span style={labelStyle}>{k}</span>
                 {isEditing ? (
                   <input
@@ -416,6 +432,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                     }}
                     onBlur={() => commitEdit(k, original)}
                     style={{
+                      flex: 1,
                       background: 'rgba(255,176,0,0.06)',
                       border: '1px solid rgba(255,176,0,0.5)',
                       borderRadius: 1,
@@ -423,19 +440,22 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                       fontFamily: 'var(--font-mono)',
                       fontSize: 12,
                       padding: '0 4px',
-                      width: isArray ? '100%' : 72,
                       outline: 'none',
                     }}
                   />
                 ) : (
-                  <span
+                  <div
                     data-testid={`attr-value-${k}`}
-                    style={{ ...valueStyle, cursor: 'text', borderBottom: '1px solid transparent' }}
-                    title="Click to edit"
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, cursor: 'text', minWidth: 0 }}
                     onClick={() => startEdit(k, original)}
+                    onMouseEnter={() => setHoveredAttr(k)}
+                    onMouseLeave={() => setHoveredAttr(null)}
                   >
-                    {String(v)}
-                  </span>
+                    <span style={{ ...valueStyle, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {String(v)}
+                    </span>
+                    <PencilIcon color={pencilColor} />
+                  </div>
                 )}
               </div>
             )
