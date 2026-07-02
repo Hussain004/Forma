@@ -57,7 +57,6 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
       color: 'var(--text-secondary)',
       flexShrink: 0,
       letterSpacing: '0.06em',
-      overflow: 'hidden',
     }}>
       <span style={{ color: 'var(--text-primary)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {modelName}
