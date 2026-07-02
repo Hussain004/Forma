@@ -6,20 +6,20 @@
   <polygon points="4,46 32,56 32,62 4,52" fill="#FFB000"/>
   <polygon points="4,46 32,56 60,46 32,36" fill="#FFD060"/>
 
-  <!-- Slab 2: sage-teal (bridge between amber and blue) -->
-  <polygon points="60,40 32,50 32,56 60,46" fill="#2A5A50"/>
-  <polygon points="4,40 32,50 32,56 4,46" fill="#4A9080"/>
-  <polygon points="4,40 32,50 60,40 32,30" fill="#70B4A4"/>
+  <!-- Slab 2: vivid pink -->
+  <polygon points="60,40 32,50 32,56 60,46" fill="#B03058"/>
+  <polygon points="4,40 32,50 32,56 4,46" fill="#FF4878"/>
+  <polygon points="4,40 32,50 60,40 32,30" fill="#FF80A8"/>
 
-  <!-- Slab 3: blue -->
-  <polygon points="60,34 32,44 32,50 60,40" fill="#1B5E8A"/>
-  <polygon points="4,34 32,44 32,50 4,40" fill="#3498DB"/>
-  <polygon points="4,34 32,44 60,34 32,24" fill="#62C4F5"/>
+  <!-- Slab 3: rich purple -->
+  <polygon points="60,34 32,44 32,50 60,40" fill="#582880"/>
+  <polygon points="4,34 32,44 32,50 4,40" fill="#9040C8"/>
+  <polygon points="4,34 32,44 60,34 32,24" fill="#B878E8"/>
 
-  <!-- Slab 4: bright teal (bridge between blue and green) -->
-  <polygon points="60,28 32,38 32,44 60,34" fill="#0D6858"/>
-  <polygon points="4,28 32,38 32,44 4,34" fill="#1AAA90"/>
-  <polygon points="4,28 32,38 60,28 32,18" fill="#3CCAB0"/>
+  <!-- Slab 4: blue -->
+  <polygon points="60,28 32,38 32,44 60,34" fill="#1B5E8A"/>
+  <polygon points="4,28 32,38 32,44 4,34" fill="#3498DB"/>
+  <polygon points="4,28 32,38 60,28 32,18" fill="#62C4F5"/>
 
   <!-- Slab 5 (top): green -->
   <polygon points="60,22 32,32 32,38 60,28" fill="#28784A"/>
