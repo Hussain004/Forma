@@ -15,6 +15,7 @@ export interface OnnxNode {
   outputShapes?: OnnxDim[][]
   dimmed?: boolean
   excluded?: boolean
+  isModified?: boolean
 }
 
 export interface OnnxEdge {

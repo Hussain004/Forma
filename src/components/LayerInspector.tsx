@@ -1,6 +1,8 @@
+import { useState, useEffect, useRef } from 'react'
 import type { OnnxNode, ModelMetadata } from '../lib/onnxTypes'
 import { formatShape } from '../lib/onnxProtoParser'
 import { opCategoryColor } from '../lib/graphUtils'
+import { inferAttrType, parseAttrEdit } from '../lib/attrUtils'
 
 interface LayerInspectorProps {
   node: OnnxNode | null
@@ -14,6 +16,7 @@ interface LayerInspectorProps {
   }
   onBulkExclude?: () => void
   onBulkInclude?: () => void
+  onAttrEdit?: (nodeId: string, attrName: string, value: string | number) => void
 }
 
 const bulkButtonStyle: React.CSSProperties = {
@@ -108,7 +111,16 @@ function sensitivityColor(params: number): string {
   return '#52C57A'
 }
 
-export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude }: LayerInspectorProps) {
+export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onAttrEdit }: LayerInspectorProps) {
+  const [editingAttr, setEditingAttr] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const cancelEditRef = useRef(false)
+
+  useEffect(() => {
+    setEditingAttr(null)
+    setEditValue('')
+  }, [node?.id])
+
   if (multiSelection && multiSelection.nodes.length > 1) {
     const opCounts: Record<string, number> = {}
     for (const n of multiSelection.nodes) {
@@ -273,6 +285,28 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
     navigator.clipboard.writeText(lines.join('\n')).catch(() => {})
   }
 
+  function startEdit(attrName: string, current: string | number) {
+    setEditingAttr(attrName)
+    setEditValue(String(current))
+  }
+
+  function commitEdit(attrName: string, original: string | number) {
+    if (cancelEditRef.current) {
+      cancelEditRef.current = false
+      return
+    }
+    const parsed = parseAttrEdit(editValue, original)
+    if (parsed !== original && node) {
+      onAttrEdit?.(node.id, attrName, parsed)
+    }
+    setEditingAttr(null)
+  }
+
+  function cancelEdit() {
+    cancelEditRef.current = true
+    setEditingAttr(null)
+  }
+
   return (
     <div
       style={{
@@ -285,10 +319,24 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
         boxSizing: 'border-box',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        {node.isModified && (
+          <span style={{
+            fontSize: 9,
+            letterSpacing: '0.08em',
+            color: '#FFB000',
+            background: 'rgba(255,176,0,0.12)',
+            padding: '2px 6px',
+            borderRadius: 1,
+            textTransform: 'uppercase',
+          }}>
+            Modified
+          </span>
+        )}
         <button
           onClick={handleCopy}
           style={{
+            marginLeft: 'auto',
             background: 'none',
             border: '1px solid rgba(255,176,0,0.4)',
             borderRadius: 2,
@@ -349,9 +397,49 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
       {Object.keys(node.attributes ?? {}).length > 0 && (
         <>
           {sectionHeader('Attributes')}
-          {Object.entries(node.attributes).map(([k, v]) => (
-            <Row key={k} label={k} value={String(v)} />
-          ))}
+          {Object.entries(node.attributes).map(([k, v]) => {
+            const original = v as string | number
+            const isEditing = editingAttr === k
+            const isArray = inferAttrType(original) === 'array'
+            return (
+              <div key={k} style={rowStyle}>
+                <span style={labelStyle}>{k}</span>
+                {isEditing ? (
+                  <input
+                    data-testid={`attr-input-${k}`}
+                    autoFocus
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.preventDefault(); commitEdit(k, original) }
+                      if (e.key === 'Escape') { e.stopPropagation(); cancelEdit() }
+                    }}
+                    onBlur={() => commitEdit(k, original)}
+                    style={{
+                      background: 'rgba(255,176,0,0.06)',
+                      border: '1px solid rgba(255,176,0,0.5)',
+                      borderRadius: 1,
+                      color: 'var(--text-primary)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 12,
+                      padding: '0 4px',
+                      width: isArray ? '100%' : 72,
+                      outline: 'none',
+                    }}
+                  />
+                ) : (
+                  <span
+                    data-testid={`attr-value-${k}`}
+                    style={{ ...valueStyle, cursor: 'text', borderBottom: '1px solid transparent' }}
+                    title="Click to edit"
+                    onClick={() => startEdit(k, original)}
+                  >
+                    {String(v)}
+                  </span>
+                )}
+              </div>
+            )
+          })}
         </>
       )}
 
