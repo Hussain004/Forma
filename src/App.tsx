@@ -47,26 +47,26 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
   const quantizeLabel = formatQuantizeEstimate(quantizeEstimate)
   return (
     <div style={{
-      height: 36,
+      height: 52,
       background: '#0E1114',
       borderBottom: '1px solid rgba(255,255,255,0.1)',
       display: 'flex',
       alignItems: 'center',
-      padding: '0 16px',
-      gap: 24,
+      padding: '0 24px',
+      gap: 32,
       fontFamily: 'var(--font-mono)',
-      fontSize: 11,
+      fontSize: 13,
       color: 'var(--text-secondary)',
       flexShrink: 0,
       letterSpacing: '0.06em',
     }}>
-      <span style={{ color: 'var(--text-primary)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ color: 'var(--text-primary)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {modelName}
       </span>
       <span>{formatNumber(totalParams)} PARAMS</span>
       <span>{totalSizeMB.toFixed(1)} MB</span>
       {quantizeLabel && (
-        <span style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.06em' }}>
+        <span style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 13, letterSpacing: '0.06em' }}>
           {quantizeLabel}
         </span>
       )}
@@ -86,10 +86,10 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
             border: '1px solid rgba(255,255,255,0.15)',
             color: 'var(--text-secondary)',
             fontFamily: 'var(--font-mono)',
-            fontSize: 11,
+            fontSize: 13,
             letterSpacing: '0.06em',
-            padding: '2px 8px',
-            width: 160,
+            padding: '4px 12px',
+            width: 200,
             borderRadius: 2,
           }}
         />
@@ -98,12 +98,12 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
             position: 'absolute',
             top: '100%',
             left: 0,
-            width: 280,
+            width: 320,
             background: '#1C2128',
             border: '1px solid rgba(255,255,255,0.15)',
             borderRadius: 2,
             zIndex: 1000,
-            marginTop: 2,
+            marginTop: 4,
             maxHeight: 240,
             overflowY: 'auto',
           }}>
@@ -115,7 +115,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
                 data-testid="search-result"
                 onMouseDown={() => onDropdownSelect(node.id)}
                 style={{
-                  padding: '6px 12px',
+                  padding: '8px 16px',
                   cursor: 'pointer',
                   background: i === dropdownIndex ? 'rgba(255,176,0,0.12)' : 'transparent',
                   borderLeft: i === dropdownIndex ? '2px solid #FFB000' : '2px solid transparent',
@@ -125,9 +125,9 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
                   fontFamily: 'var(--font-mono)',
                 }}
               >
-                <span style={{ color: 'var(--text-primary)', fontSize: 11 }}>{node.opType}</span>
+                <span style={{ color: 'var(--text-primary)', fontSize: 13 }}>{node.opType}</span>
                 {node.paramCount > 0 && (
-                  <span style={{ color: 'var(--text-dim)', fontSize: 10 }}>
+                  <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>
                     {node.paramCount.toLocaleString()}
                   </span>
                 )}
@@ -136,7 +136,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
           </div>
         )}
       </div>
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
         <button
           onClick={onLayoutToggle}
           style={{
@@ -145,9 +145,9 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
             borderRadius: 2,
             color: 'var(--text-primary)',
             fontFamily: 'var(--font-mono)',
-            fontSize: 11,
+            fontSize: 13,
             letterSpacing: '0.06em',
-            padding: '4px 16px',
+            padding: '8px 24px',
             cursor: 'pointer',
             textTransform: 'uppercase',
           }}
@@ -165,9 +165,9 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
             borderRadius: 2,
             color: 'var(--text-primary)',
             fontFamily: 'var(--font-mono)',
-            fontSize: 11,
+            fontSize: 13,
             letterSpacing: '0.06em',
-            padding: '4px 16px',
+            padding: '8px 24px',
             cursor: 'pointer',
             textTransform: 'uppercase',
           }}
@@ -183,9 +183,9 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
               borderRadius: 2,
               color: 'var(--text-primary)',
               fontFamily: 'var(--font-mono)',
-              fontSize: 11,
+              fontSize: 13,
               letterSpacing: '0.06em',
-              padding: '4px 16px',
+              padding: '8px 24px',
               cursor: 'pointer',
               textTransform: 'uppercase',
             }}
@@ -203,9 +203,9 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
               borderRadius: 2,
               color: 'var(--color-amber)',
               fontFamily: 'var(--font-mono)',
-              fontSize: 11,
+              fontSize: 13,
               letterSpacing: '0.06em',
-              padding: '4px 16px',
+              padding: '8px 24px',
               cursor: 'pointer',
               textTransform: 'uppercase',
             }}
@@ -221,9 +221,9 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
             borderRadius: 2,
             color: 'var(--text-primary)',
             fontFamily: 'var(--font-mono)',
-            fontSize: 11,
+            fontSize: 13,
             letterSpacing: '0.06em',
-            padding: '4px 16px',
+            padding: '8px 24px',
             cursor: 'pointer',
             textTransform: 'uppercase',
           }}
