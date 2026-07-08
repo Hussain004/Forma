@@ -433,6 +433,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                     onBlur={() => commitEdit(k, original)}
                     style={{
                       flex: 1,
+                      minWidth: 0,
                       background: 'rgba(255,176,0,0.06)',
                       border: '1px solid rgba(255,176,0,0.5)',
                       borderRadius: 1,
