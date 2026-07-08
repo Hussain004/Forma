@@ -1,6 +1,7 @@
 import * as ort from 'onnxruntime-web'
 import { parseOnnxGraph } from '../lib/onnxParser'
 import { estimateInt8Size, compressionRatio } from '../lib/quantize'
+import { writeModifiedOnnx } from '../lib/onnxProtoWriter'
 import type { OnnxGraph } from '../lib/onnxTypes'
 
 ort.env.wasm.wasmPaths = '/'
@@ -10,6 +11,7 @@ type WorkerCommand =
   | { type: 'RUN_INFERENCE'; payload: { inputs: Record<string, Float32Array>; shapes: Record<string, number[]> } }
   | { type: 'BENCHMARK'; payload: { runs: number } }
   | { type: 'EXPORT' }
+  | { type: 'EXPORT_MODIFIED'; payload: { overrides: Map<number, Record<string, string | number>> } }
 
 type WorkerResponse =
   | { type: 'MODEL_LOADED'; payload: OnnxGraph }
@@ -125,6 +127,10 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
       // Transfer the buffer back to the main thread. Slice it so the worker retains a copy.
       const toSend = exportBuffer.slice(0)
       ctx.postMessage({ type: 'EXPORT_RESULT', payload: toSend }, [toSend])
+    } else if (cmd.type === 'EXPORT_MODIFIED') {
+      if (!exportBuffer) throw new Error('No model loaded')
+      const patched = writeModifiedOnnx(exportBuffer, cmd.payload.overrides)
+      ctx.postMessage({ type: 'EXPORT_RESULT', payload: patched }, [patched])
     }
   } catch (err) {
     ctx.postMessage({ type: 'ERROR', payload: (err as Error).message })

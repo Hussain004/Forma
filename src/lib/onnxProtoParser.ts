@@ -4,17 +4,17 @@
 //
 // ONNX uses proto3. Field numbers referenced below come from onnx.proto3.
 
-const WIRE_VARINT = 0
-const WIRE_64BIT = 1
-const WIRE_LEN = 2
-const WIRE_32BIT = 5
+export const WIRE_VARINT = 0
+export const WIRE_64BIT = 1
+export const WIRE_LEN = 2
+export const WIRE_32BIT = 5
 
 // ModelProto fields
 const MODEL_IR_VERSION = 1
 const MODEL_PRODUCER_NAME = 2
 const MODEL_PRODUCER_VERSION = 3
 const MODEL_DOC_STRING = 6
-const MODEL_GRAPH = 7
+export const MODEL_GRAPH = 7
 const MODEL_OPSET_IMPORT = 8
 
 // OperatorSetIdProto fields
@@ -22,7 +22,7 @@ const OPSET_DOMAIN = 1
 const OPSET_VERSION = 2
 
 // GraphProto fields
-const GRAPH_NODE = 1
+export const GRAPH_NODE = 1
 const GRAPH_NAME = 2
 const GRAPH_INIT = 5
 const GRAPH_INPUT = 11
@@ -34,15 +34,16 @@ const NODE_INPUT = 1
 const NODE_OUTPUT = 2
 const NODE_NAME = 3
 const NODE_OP_TYPE = 4
-const NODE_ATTR = 5
+export const NODE_ATTR = 5
 
 // AttributeProto fields
-const ATTR_NAME = 1
-const ATTR_I = 3    // int64 scalar
-const ATTR_F = 4    // float32 scalar
-const ATTR_S = 6    // string (bytes)
-const ATTR_FLOATS = 7  // packed repeated float32
-const ATTR_INTS = 8    // packed repeated int64
+export const ATTR_NAME = 1
+export const ATTR_I = 3    // int64 scalar
+export const ATTR_F = 4    // float32 scalar
+export const ATTR_S = 6    // string (bytes)
+export const ATTR_FLOATS = 7  // packed repeated float32
+export const ATTR_INTS = 8    // packed repeated int64
+export const ATTR_TYPE = 20   // AttributeType enum (validated by strict parsers)
 
 // TensorProto fields (initializers)
 const INIT_DIMS = 1
@@ -128,7 +129,7 @@ export interface ParsedGraph {
 
 // ---- Low-level reader ----
 
-class ProtoReader {
+export class ProtoReader {
   pos = 0
   buf: Uint8Array
   constructor(buf: Uint8Array) { this.buf = buf }

@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-1.0.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -62,6 +62,8 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 ### Export
 
 - Download the original model buffer as exported by the WASM runtime
+- Export Modified: write attribute edits back into a valid ONNX binary protobuf and download the patched model
+- Initializer weight bytes are preserved byte-for-byte on export; only edited attributes are re-encoded, everything else passes through untouched
 - Exported filename strips the original extension cleanly (e.g. `model_export.onnx`, never `model.onnx_export.onnx`)
 - Export is performed off-thread; the UI remains responsive throughout
 - Copy node metadata to clipboard with a single button press in the Layer Inspector
@@ -70,9 +72,10 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 
 - Off-main-thread ONNX inference via `onnxruntime-web` in a dedicated Web Worker
 - Schema-aware binary protobuf parser for full graph metadata extraction
+- Byte-preserving protobuf writer: patches only the fields that changed, leaving everything else (including large initializer tensors) untouched
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
-- 191 tests across 12 files; zero TypeScript errors on strict mode
+- 199 tests across 13 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -137,6 +140,7 @@ Browser (main thread)
       LOAD_MODEL        -> MODEL_LOADED + QUANTIZE_ESTIMATE
       BENCHMARK         -> BENCHMARK_RESULT
       EXPORT            -> EXPORT_RESULT (ArrayBuffer transfer)
+      EXPORT_MODIFIED   -> EXPORT_RESULT (attribute edits patched into the original buffer)
 ```
 
 **Web Worker isolation:** WASM model loading and inference are blocking operations. Isolating them in a worker keeps the UI at 60 fps regardless of model size. The `useOnnxWorker` hook exposes a clean async interface with typed status transitions.
@@ -180,10 +184,12 @@ src/
   lib/
     onnxTypes.ts          OnnxNode, OnnxEdge, OnnxGraph interfaces
     onnxProtoParser.ts    Binary protobuf parser for ONNX ModelProto
+    onnxProtoWriter.ts    Byte-preserving protobuf writer: patches edited attributes into the original buffer
+    attrUtils.ts          inferAttrType, parseAttrEdit -- attribute type inference and parsing
     graphUtils.ts         Pure graph transforms: selection, filter, exclusion, tracing, depth
     quantize.ts           INT8 size estimation and formatting
   workers/
-    onnxWorker.ts         Web Worker: LOAD_MODEL, BENCHMARK, EXPORT
+    onnxWorker.ts         Web Worker: LOAD_MODEL, BENCHMARK, EXPORT, EXPORT_MODIFIED
   __tests__/
     graph.test.ts         Graph utilities and selection model
     onnx.test.ts          Worker lifecycle and message contract
@@ -197,6 +203,7 @@ src/
     v0.9.test.ts          attribute viewer, tensor name search, edge shape labels
     v0.10.test.ts         model metadata, node name, producer/opset/IR version parsing
     v1.0.test.ts          attribute type inference, value parsing, inline editing, MOD badge
+    v1.1.test.ts          protobuf writer: int/float/string/array attribute edits, byte preservation
 ```
 
 ---
@@ -205,7 +212,7 @@ src/
 
 ```bash
 npm run dev      # Dev server with COOP/COEP headers
-npm test         # 172 tests across 11 files
+npm test         # 199 tests across 13 files
 npx tsc --noEmit # Type-check without building
 npm run build    # Production build
 ```
@@ -216,6 +223,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 1.1.0 | Protobuf writer, Export Modified button, byte-preserving attribute patching |
 | 1.0.0 | Inline attribute editing, Ctrl+Z undo, MOD badge on edited nodes |
 | 0.10.0 | Model metadata (producer, opset, IR version), node names, 3-color favicon |
 | 0.9.0 | Attribute viewer, tensor name search, edge shape labels, intermediate tensor shapes |
