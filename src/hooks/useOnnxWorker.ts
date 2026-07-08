@@ -138,5 +138,15 @@ export function useOnnxWorker() {
     })
   }, [])
 
-  return { loadModel, runInference, runBenchmark, exportModel, graph, status, error, progress, benchmarkResult, quantizeEstimate }
+  const exportModifiedModel = useCallback((overrides: Map<number, Record<string, string | number>>): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+      if (!workerRef.current) { reject(new Error('No worker')); return }
+      exportResolve.current = resolve
+      exportReject.current = reject
+      setStatus('exporting')
+      workerRef.current.postMessage({ type: 'EXPORT_MODIFIED', payload: { overrides } })
+    })
+  }, [])
+
+  return { loadModel, runInference, runBenchmark, exportModel, exportModifiedModel, graph, status, error, progress, benchmarkResult, quantizeEstimate }
 }

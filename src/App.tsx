@@ -38,10 +38,12 @@ interface StatsBarProps {
   benchmarkLabel: string | null
   onDownload: () => void
   canDownload: boolean
+  onDownloadModified: () => void
+  canDownloadModified: boolean
   onReset: () => void
 }
 
-function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, onDownload, canDownload, onReset }: StatsBarProps) {
+function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, onDownload, canDownload, onDownloadModified, canDownloadModified, onReset }: StatsBarProps) {
   const quantizeLabel = formatQuantizeEstimate(quantizeEstimate)
   return (
     <div style={{
@@ -191,6 +193,26 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
             Download
           </button>
         )}
+        {canDownloadModified && (
+          <button
+            onClick={onDownloadModified}
+            title="Export the model with your attribute edits applied"
+            style={{
+              background: 'none',
+              border: '1px solid rgba(255,176,0,0.4)',
+              borderRadius: 2,
+              color: 'var(--color-amber)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              letterSpacing: '0.06em',
+              padding: '4px 16px',
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+            }}
+          >
+            Export Modified
+          </button>
+        )}
         <button
           onClick={onReset}
           style={{
@@ -214,7 +236,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
 }
 
 function App() {
-  const { loadModel, runBenchmark, exportModel, graph, status, error, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
+  const { loadModel, runBenchmark, exportModel, exportModifiedModel, graph, status, error, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
   const [selectableGraph, setSelectableGraph] = useState<SelectableGraph | null>(null)
   const [filterQuery, setFilterQuery] = useState('')
   const [layoutDir, setLayoutDir] = useState<'TB' | 'LR'>('TB')
@@ -493,6 +515,25 @@ function App() {
     })
   }
 
+  const handleDownloadModified = () => {
+    const overridesByIndex = new Map<number, Record<string, string | number>>()
+    for (const [nodeId, overrides] of attrOverrides) {
+      const match = /^node_(\d+)_/.exec(nodeId)
+      if (!match) continue
+      overridesByIndex.set(Number(match[1]), overrides)
+    }
+    exportModifiedModel(overridesByIndex).then((buf) => {
+      const blob = new Blob([buf], { type: 'application/octet-stream' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const baseName = (graph?.modelName ?? 'model').replace(/\.[^.]+$/, '')
+      a.download = baseName + '_modified.onnx'
+      a.click()
+      URL.revokeObjectURL(url)
+    })
+  }
+
   const benchmarkLabel = benchmarkResult
     ? `avg ${benchmarkResult.avgMs.toFixed(1)} ms / min ${benchmarkResult.minMs.toFixed(1)} ms / max ${benchmarkResult.maxMs.toFixed(1)} ms (${benchmarkResult.runs} runs)`
     : status === 'benchmarking' ? 'Benchmarking...' : null
@@ -541,6 +582,8 @@ function App() {
             benchmarkLabel={benchmarkLabel}
             onDownload={handleDownload}
             canDownload={status === 'ready'}
+            onDownloadModified={handleDownloadModified}
+            canDownloadModified={status === 'ready' && attrOverrides.size > 0}
             onReset={handleReset}
           />
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
