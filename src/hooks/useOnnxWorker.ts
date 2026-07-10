@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { OnnxGraph } from '../lib/onnxTypes'
+import type { StructuralOp } from '../lib/onnxProtoWriter'
 
 type Status = 'idle' | 'loading' | 'ready' | 'running' | 'benchmarking' | 'exporting' | 'error'
 
@@ -138,13 +139,13 @@ export function useOnnxWorker() {
     })
   }, [])
 
-  const exportModifiedModel = useCallback((overrides: Map<number, Record<string, string | number>>): Promise<ArrayBuffer> => {
+  const exportModifiedModel = useCallback((overrides: Map<number, Record<string, string | number>>, structuralOps: StructuralOp[] = []): Promise<ArrayBuffer> => {
     return new Promise((resolve, reject) => {
       if (!workerRef.current) { reject(new Error('No worker')); return }
       exportResolve.current = resolve
       exportReject.current = reject
       setStatus('exporting')
-      workerRef.current.postMessage({ type: 'EXPORT_MODIFIED', payload: { overrides } })
+      workerRef.current.postMessage({ type: 'EXPORT_MODIFIED', payload: { overrides, structuralOps } })
     })
   }, [])
 

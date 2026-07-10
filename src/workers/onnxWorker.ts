@@ -1,7 +1,7 @@
 import * as ort from 'onnxruntime-web'
 import { parseOnnxGraph } from '../lib/onnxParser'
 import { estimateInt8Size, compressionRatio } from '../lib/quantize'
-import { writeModifiedOnnx } from '../lib/onnxProtoWriter'
+import { writeModifiedOnnx, type StructuralOp } from '../lib/onnxProtoWriter'
 import type { OnnxGraph } from '../lib/onnxTypes'
 
 ort.env.wasm.wasmPaths = '/'
@@ -11,7 +11,7 @@ type WorkerCommand =
   | { type: 'RUN_INFERENCE'; payload: { inputs: Record<string, Float32Array>; shapes: Record<string, number[]> } }
   | { type: 'BENCHMARK'; payload: { runs: number } }
   | { type: 'EXPORT' }
-  | { type: 'EXPORT_MODIFIED'; payload: { overrides: Map<number, Record<string, string | number>> } }
+  | { type: 'EXPORT_MODIFIED'; payload: { overrides: Map<number, Record<string, string | number>>; structuralOps: StructuralOp[] } }
 
 type WorkerResponse =
   | { type: 'MODEL_LOADED'; payload: OnnxGraph }
@@ -129,7 +129,7 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
       ctx.postMessage({ type: 'EXPORT_RESULT', payload: toSend }, [toSend])
     } else if (cmd.type === 'EXPORT_MODIFIED') {
       if (!exportBuffer) throw new Error('No model loaded')
-      const patched = writeModifiedOnnx(exportBuffer, cmd.payload.overrides)
+      const patched = writeModifiedOnnx(exportBuffer, cmd.payload.overrides, cmd.payload.structuralOps)
       ctx.postMessage({ type: 'EXPORT_RESULT', payload: patched }, [patched])
     }
   } catch (err) {

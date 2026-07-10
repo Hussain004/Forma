@@ -26,14 +26,14 @@ export const GRAPH_NODE = 1
 const GRAPH_NAME = 2
 const GRAPH_INIT = 5
 const GRAPH_INPUT = 11
-const GRAPH_OUTPUT = 12
+export const GRAPH_OUTPUT = 12
 const GRAPH_VALUE_INFO = 13  // intermediate tensor shapes
 
 // NodeProto fields
-const NODE_INPUT = 1
-const NODE_OUTPUT = 2
-const NODE_NAME = 3
-const NODE_OP_TYPE = 4
+export const NODE_INPUT = 1
+export const NODE_OUTPUT = 2
+export const NODE_NAME = 3
+export const NODE_OP_TYPE = 4
 export const NODE_ATTR = 5
 
 // AttributeProto fields

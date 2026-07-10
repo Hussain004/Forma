@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type CSSProperties } from 'react'
 import type { OnnxNode, ModelMetadata } from '../lib/onnxTypes'
 import { formatShape } from '../lib/onnxProtoParser'
-import { opCategoryColor } from '../lib/graphUtils'
+import { opCategoryColor, type DeleteEligibility } from '../lib/graphUtils'
 import { parseAttrEdit } from '../lib/attrUtils'
 
 function PencilIcon({ color }: { color: string }) {
@@ -27,6 +27,8 @@ interface LayerInspectorProps {
   onBulkExclude?: () => void
   onBulkInclude?: () => void
   onAttrEdit?: (nodeId: string, attrName: string, value: string | number) => void
+  onDeleteNode?: (nodeId: string, keepInputPosition: number | null) => void
+  deleteEligibility?: DeleteEligibility
 }
 
 const bulkButtonStyle: React.CSSProperties = {
@@ -121,15 +123,17 @@ function sensitivityColor(params: number): string {
   return '#52C57A'
 }
 
-export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onAttrEdit }: LayerInspectorProps) {
+export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onAttrEdit, onDeleteNode, deleteEligibility }: LayerInspectorProps) {
   const [editingAttr, setEditingAttr] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [hoveredAttr, setHoveredAttr] = useState<string | null>(null)
+  const [showDeletePicker, setShowDeletePicker] = useState(false)
   const cancelEditRef = useRef(false)
 
   useEffect(() => {
     setEditingAttr(null)
     setEditValue('')
+    setShowDeletePicker(false)
   }, [node?.id])
 
   if (multiSelection && multiSelection.nodes.length > 1) {
@@ -402,6 +406,72 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           >
             {node.excluded ? 'YES' : 'NO'}
           </button>
+        </div>
+      )}
+
+      {isCompute && onDeleteNode && deleteEligibility && (
+        <div style={{ ...rowStyle, flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={labelStyle}>DELETE NODE</span>
+            <button
+              data-testid="delete-node-button"
+              disabled={!deleteEligibility.eligible}
+              title={deleteEligibility.reason}
+              onClick={() => {
+                if (!deleteEligibility.eligible) return
+                if (deleteEligibility.candidateInputs.length > 1) {
+                  setShowDeletePicker((v) => !v)
+                  return
+                }
+                onDeleteNode(node.id, deleteEligibility.candidateInputs[0]?.position ?? null)
+              }}
+              style={{
+                background: 'none',
+                border: deleteEligibility.eligible ? '1px solid rgba(192,57,43,0.4)' : '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 2,
+                color: deleteEligibility.eligible ? '#C0392B' : 'var(--text-dim)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10,
+                letterSpacing: '0.06em',
+                padding: '2px 10px',
+                cursor: deleteEligibility.eligible ? 'pointer' : 'default',
+                textTransform: 'uppercase',
+              }}
+            >
+              {deleteEligibility.candidateInputs.length > 1 ? 'Choose source' : 'Delete'}
+            </button>
+          </div>
+          {!deleteEligibility.eligible && deleteEligibility.reason && (
+            <div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.02em', paddingLeft: 108 }}>
+              {deleteEligibility.reason}
+            </div>
+          )}
+          {showDeletePicker && deleteEligibility.eligible && deleteEligibility.candidateInputs.length > 1 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingLeft: 108 }}>
+              <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Reconnect using
+              </div>
+              {deleteEligibility.candidateInputs.map((c) => (
+                <div
+                  key={c.position}
+                  data-testid={`delete-picker-option-${c.position}`}
+                  onClick={() => { onDeleteNode(node.id, c.position); setShowDeletePicker(false) }}
+                  style={{
+                    cursor: 'pointer',
+                    padding: '4px 8px',
+                    fontSize: 11,
+                    fontFamily: 'var(--font-mono)',
+                    color: 'var(--text-primary)',
+                    background: 'rgba(255,176,0,0.06)',
+                    border: '1px solid rgba(255,176,0,0.2)',
+                    borderRadius: 1,
+                  }}
+                >
+                  {c.tensorName}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

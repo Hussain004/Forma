@@ -139,6 +139,132 @@ export function getDescendants(graph: OnnxGraph, nodeId: string): Set<string> {
   return result
 }
 
+// Only nodes parsed directly from the loaded model (id format `node_<idx>_<opType>`)
+// are valid structural-edit targets. Synthetic nodes created by insertPassthroughNode
+// use a different id scheme and are deliberately excluded from further editing --
+// chaining edits onto generated nodes would require resolving ops against ops rather
+// than always against the original model, which is out of scope for now.
+const ORIGINAL_NODE_ID_RE = /^node_\d+_/
+
+export interface DeleteCandidate {
+  tensorName: string
+  position: number
+}
+
+export interface DeleteEligibility {
+  eligible: boolean
+  reason?: string
+  candidateInputs: DeleteCandidate[]
+}
+
+export function getDeleteEligibility(graph: SelectableGraph, nodeId: string): DeleteEligibility {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return { eligible: false, reason: 'Node not found', candidateInputs: [] }
+  if (!ORIGINAL_NODE_ID_RE.test(nodeId)) {
+    return { eligible: false, reason: 'Generated nodes cannot be deleted', candidateInputs: [] }
+  }
+  const realOutputs = node.outputs.filter((o) => o !== '')
+  if (realOutputs.length > 1) {
+    return { eligible: false, reason: 'Node has multiple outputs', candidateInputs: [] }
+  }
+  const hasConsumers = graph.edges.some((e) => e.source === nodeId)
+  if (!hasConsumers) {
+    // Dead end: nothing downstream to reconnect, safe to remove outright.
+    return { eligible: true, candidateInputs: [] }
+  }
+  const feedsGraphOutput = graph.edges.some((e) => e.source === nodeId && e.target.startsWith('output_'))
+  if (feedsGraphOutput) {
+    return { eligible: false, reason: 'Node produces a graph output', candidateInputs: [] }
+  }
+  const candidateInputs: DeleteCandidate[] = node.inputs
+    .map((tensorName, position) => ({ tensorName, position }))
+    .filter(({ tensorName }) => tensorName !== '' && graph.edges.some((e) => e.target === nodeId && e.label === tensorName))
+  if (candidateInputs.length === 0) {
+    return { eligible: false, reason: 'No upstream connection to reconnect', candidateInputs: [] }
+  }
+  return { eligible: true, candidateInputs }
+}
+
+// keepInputPosition indexes node.inputs; pass null for the dead-end case (no
+// reconnection needed). Caller is expected to have checked getDeleteEligibility first.
+export function deleteNodeWithReconnect(
+  graph: SelectableGraph,
+  nodeId: string,
+  keepInputPosition: number | null,
+): SelectableGraph {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return graph
+
+  let sourceId: string | undefined
+  let keepTensor: string | undefined
+  if (keepInputPosition !== null) {
+    keepTensor = node.inputs[keepInputPosition]
+    const incoming = graph.edges.find((e) => e.target === nodeId && e.label === keepTensor)
+    sourceId = incoming?.source
+  }
+
+  const reconnected =
+    sourceId && keepTensor
+      ? graph.edges
+          .filter((e) => e.source === nodeId)
+          .map((e) => ({
+            id: `${sourceId}->${e.target}@${keepTensor}`,
+            source: sourceId as string,
+            target: e.target,
+            label: keepTensor,
+            shape: e.shape,
+          }))
+      : []
+
+  return {
+    ...graph,
+    nodes: graph.nodes.filter((n) => n.id !== nodeId),
+    edges: graph.edges.filter((e) => e.source !== nodeId && e.target !== nodeId).concat(reconnected),
+  }
+}
+
+// inputPosition indexes targetNode.inputs (the current/live tensor name at that
+// position, which may already reflect earlier structural edits). newNodeId must be
+// a fresh, unique id -- callers should generate one that never collides with the
+// `node_<idx>_<opType>` scheme (e.g. `passthrough_<counter>`).
+export function insertPassthroughNode(
+  graph: SelectableGraph,
+  targetNodeId: string,
+  inputPosition: number,
+  newNodeId: string,
+): SelectableGraph {
+  const target = graph.nodes.find((n) => n.id === targetNodeId)
+  if (!target) return graph
+  const tensorName = target.inputs[inputPosition]
+  if (!tensorName) return graph
+  const incoming = graph.edges.find((e) => e.target === targetNodeId && e.label === tensorName)
+  if (!incoming) return graph
+
+  const newTensorName = `${tensorName}__identity_${newNodeId}`
+  const passthroughNode: SelectableNode = {
+    id: newNodeId,
+    opType: 'Identity',
+    inputs: [tensorName],
+    outputs: [newTensorName],
+    attributes: {},
+    paramCount: 0,
+    estimatedSizeMB: 0,
+    selected: false,
+  }
+  const rewiredTarget = { ...target, inputs: target.inputs.map((inp, i) => (i === inputPosition ? newTensorName : inp)) }
+
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) => (n.id === targetNodeId ? rewiredTarget : n)).concat(passthroughNode),
+    edges: graph.edges
+      .filter((e) => e !== incoming)
+      .concat([
+        { id: `${incoming.source}->${newNodeId}@${tensorName}`, source: incoming.source, target: newNodeId, label: tensorName, shape: incoming.shape },
+        { id: `${newNodeId}->${targetNodeId}@${newTensorName}`, source: newNodeId, target: targetNodeId, label: newTensorName, shape: incoming.shape },
+      ]),
+  }
+}
+
 export function computeGraphDepth(graph: OnnxGraph): number {
   if (graph.nodes.length === 0) return 0
   const incoming = new Map<string, number>()
