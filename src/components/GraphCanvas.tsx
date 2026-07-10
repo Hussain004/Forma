@@ -52,7 +52,7 @@ const handleStyle = {
   border: 'none',
 }
 
-type OperatorData = { opType: string; paramCount: number; shapeLabel: string; dimmed: boolean; excluded: boolean; traceRole: TraceRole; traceActive: boolean; isModified: boolean }
+type OperatorData = { opType: string; paramCount: number; shapeLabel: string; dimmed: boolean; excluded: boolean; traceRole: TraceRole; traceActive: boolean; isModified: boolean; isSynthetic: boolean }
 type IOData = { label: string; shapeLabel: string; dimmed: boolean; excluded: boolean; traceRole: TraceRole; traceActive: boolean }
 
 const strikeStyle: React.CSSProperties = {
@@ -101,6 +101,11 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
       {data.isModified && (
         <div style={{ position: 'absolute', top: 3, right: 3, fontSize: 7, letterSpacing: '0.08em', color: '#FFB000', background: 'rgba(255,176,0,0.12)', padding: '1px 4px', borderRadius: 1 }}>
           MOD
+        </div>
+      )}
+      {data.isSynthetic && (
+        <div style={{ position: 'absolute', top: 3, left: 7, fontSize: 7, letterSpacing: '0.08em', color: 'var(--color-green)', background: 'rgba(82,197,122,0.12)', padding: '1px 4px', borderRadius: 1 }}>
+          NEW
         </div>
       )}
       {data.excluded && <div style={strikeStyle} />}
@@ -177,11 +182,17 @@ interface GraphCanvasProps {
   selectedNodeId: string | null
   onNodeSelect: (nodeId: string) => void
   onNodeCtrlClick?: (nodeId: string) => void
+  onEdgeClick?: (targetNodeId: string, tensorName: string) => void
   jumpToNodeId?: string | null
   traceAncestors?: Set<string>
   traceDescendants?: Set<string>
   layoutDir?: 'TB' | 'LR'
 }
+
+// Nodes parsed directly from the loaded model use the `node_<idx>_<opType>` id
+// scheme; a passthrough Identity node inserted via structural editing does not,
+// which is what marks it as generated rather than part of the original file.
+const ORIGINAL_NODE_ID_RE = /^node_\d+_/
 
 function toFlowGraph(
   onnxNodes: OnnxNode[],
@@ -209,7 +220,7 @@ function toFlowGraph(
       selected: (n as SelectableNode).selected ?? (n.id === selectedNodeId),
       data: isIO
         ? { label: n.outputs[0] ?? n.inputs[0] ?? n.opType, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive }
-        : { opType: n.opType, paramCount: n.paramCount, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive, isModified: n.isModified ?? false },
+        : { opType: n.opType, paramCount: n.paramCount, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive, isModified: n.isModified ?? false, isSynthetic: !ORIGINAL_NODE_ID_RE.test(n.id) },
     }
   })
 
@@ -230,7 +241,7 @@ function toFlowGraph(
         labelStyle: { fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#5A6070' },
         labelBgStyle: { fill: '#12161A', fillOpacity: 0.85 },
         labelBgPadding: [3, 4] as [number, number],
-        style: { stroke: '#FFB000', strokeWidth: 1 },
+        style: { stroke: '#FFB000', strokeWidth: 1, cursor: 'pointer' },
       }
     })
 
@@ -248,7 +259,7 @@ function JumpController({ jumpToNodeId }: { jumpToNodeId?: string | null }) {
 
 const EMPTY_TRACE: Set<string> = new Set()
 
-export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE, layoutDir = 'TB' }: GraphCanvasProps) {
+export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, onEdgeClick, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE, layoutDir = 'TB' }: GraphCanvasProps) {
   const computed = useMemo(
     () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir),
     [onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir],
@@ -280,6 +291,13 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
           } else {
             onNodeSelect(node.id)
           }
+        }}
+        onEdgeClick={(_event, edge) => {
+          // The React Flow edge's `label` field is repurposed to show the tensor
+          // shape (only when adjacent to the selection), not the tensor name --
+          // resolve the real name from the original OnnxEdge with the same id.
+          const original = onnxEdges.find((e) => e.id === edge.id)
+          if (original?.label) onEdgeClick?.(edge.target, original.label)
         }}
         onNodeMouseEnter={(event, node) => {
           setHoveredNodeId(node.id)

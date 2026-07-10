@@ -4,11 +4,27 @@ import { ModelDropzone } from './components/ModelDropzone'
 import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
 import { useOnnxWorker } from './hooks/useOnnxWorker'
-import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, type SelectableGraph } from './lib/graphUtils'
+import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, type SelectableGraph } from './lib/graphUtils'
 import { formatQuantizeEstimate } from './lib/quantize'
 import type { OnnxNode } from './lib/onnxTypes'
 import type { QuantizeEstimate } from './hooks/useOnnxWorker'
+import type { StructuralOp } from './lib/onnxProtoWriter'
 import './index.css'
+
+// UI-layer structural edit record: carries both the live graph ids (for the
+// visualization-layer reducers in graphUtils.ts) and the original 0-based node
+// indices (for translating to the protobuf writer's index-only StructuralOp at
+// export time). See onnxProtoWriter.ts for why positions, not tensor-name values,
+// are what make ops replay correctly in sequence.
+type GraphEdit =
+  | { type: 'delete'; nodeId: string; nodeIndex: number; keepInputPosition: number | null }
+  | { type: 'insertPassthrough'; targetNodeId: string; targetNodeIndex: number; inputPosition: number; newNodeId: string }
+
+const ORIGINAL_NODE_ID_RE = /^node_(\d+)_/
+
+type UndoEntry =
+  | { kind: 'attr'; nodeId: string; attrName: string; prevValue: string | number }
+  | { kind: 'structural' }
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -249,10 +265,15 @@ function App() {
   const [panelWidth, setPanelWidth] = useState(280)
   const [jumpToNodeId, setJumpToNodeId] = useState<string | null>(null)
   const [attrOverrides, setAttrOverrides] = useState<Map<string, Record<string, string | number>>>(new Map())
-  const [undoStack, setUndoStack] = useState<Array<{ nodeId: string; attrName: string; prevValue: string | number }>>([])
+  const [structuralOps, setStructuralOps] = useState<GraphEdit[]>([])
+  const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const filterInputRef = useRef<HTMLInputElement>(null)
   const undoStackRef = useRef(undoStack)
   undoStackRef.current = undoStack
+  const selectedNodeIdRef = useRef(selectedNodeId)
+  selectedNodeIdRef.current = selectedNodeId
+  const structuralGraphRef = useRef<SelectableGraph | null>(null)
+  const passthroughCounterRef = useRef(0)
   const isResizing = useRef(false)
   const resizeStartX = useRef(0)
   const resizeStartWidth = useRef(0)
@@ -284,7 +305,9 @@ function App() {
     setSelectedNodeIds(new Set())
     setSelectedNodeId(null)
     setAttrOverrides(new Map())
+    setStructuralOps([])
     setUndoStack([])
+    passthroughCounterRef.current = 0
     if (graph) setShowDropzone(false)
   }, [graph])
 
@@ -297,13 +320,37 @@ function App() {
         if (stack.length === 0) return
         const last = stack[stack.length - 1]
         setUndoStack(prev => prev.slice(0, -1))
-        setAttrOverrides(prev => {
-          const next = new Map(prev)
-          const existing = { ...(next.get(last.nodeId) ?? {}) }
-          existing[last.attrName] = last.prevValue
-          next.set(last.nodeId, existing)
-          return next
-        })
+        if (last.kind === 'attr') {
+          setAttrOverrides(prev => {
+            const next = new Map(prev)
+            const existing = { ...(next.get(last.nodeId) ?? {}) }
+            existing[last.attrName] = last.prevValue
+            next.set(last.nodeId, existing)
+            return next
+          })
+        } else {
+          // Structural ops are strict append-order, so popping the last undo
+          // entry and the last op always correspond, regardless of delete/insert.
+          setStructuralOps(prev => prev.slice(0, -1))
+        }
+        return
+      }
+      if (e.key === 'Delete' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        // Keyboard shortcut only covers the unambiguous case (single or zero
+        // reconnection candidates) -- a node with multiple real inputs needs the
+        // picker in the Layer Inspector, which needs a click target to choose from.
+        const nodeId = selectedNodeIdRef.current
+        const g = structuralGraphRef.current
+        if (!nodeId || !g) return
+        const eligibility = getDeleteEligibility(g, nodeId)
+        if (!eligibility.eligible || eligibility.candidateInputs.length > 1) return
+        const match = ORIGINAL_NODE_ID_RE.exec(nodeId)
+        if (!match) return
+        const keepInputPosition = eligibility.candidateInputs.length === 1 ? eligibility.candidateInputs[0].position : null
+        setStructuralOps(prev => [...prev, { type: 'delete', nodeId, nodeIndex: Number(match[1]), keepInputPosition }])
+        setUndoStack(prev => [...prev, { kind: 'structural' }])
+        setSelectedNodeId(null)
+        setSelectedNodeIds(new Set())
         return
       }
       if (e.key === 'Escape') {
@@ -336,9 +383,21 @@ function App() {
     }
   }, [selectableGraph, attrOverrides])
 
+  const graphWithStructuralEdits = useMemo((): SelectableGraph | null => {
+    if (!graphWithOverrides || structuralOps.length === 0) return graphWithOverrides
+    return structuralOps.reduce<SelectableGraph>(
+      (g, op) =>
+        op.type === 'delete'
+          ? deleteNodeWithReconnect(g, op.nodeId, op.keepInputPosition)
+          : insertPassthroughNode(g, op.targetNodeId, op.inputPosition, op.newNodeId),
+      graphWithOverrides,
+    )
+  }, [graphWithOverrides, structuralOps])
+  structuralGraphRef.current = graphWithStructuralEdits
+
   const filteredGraph = useMemo(
-    () => (graphWithOverrides ? filterGraph(graphWithOverrides, filterQuery) : null),
-    [graphWithOverrides, filterQuery],
+    () => (graphWithStructuralEdits ? filterGraph(graphWithStructuralEdits, filterQuery) : null),
+    [graphWithStructuralEdits, filterQuery],
   )
 
   const dropdownResults = useMemo(() => {
@@ -349,37 +408,42 @@ function App() {
   }, [filterQuery, filteredGraph])
 
   const modelStats = useMemo(() => {
-    if (!selectableGraph) return null
-    const opCounts = computeOpCounts(selectableGraph.nodes)
+    if (!graphWithStructuralEdits) return null
+    const opCounts = computeOpCounts(graphWithStructuralEdits.nodes)
     return {
       opCounts,
-      totalNodes: selectableGraph.nodes.filter(n => n.opType !== 'Input' && n.opType !== 'Output').length,
-      graphDepth: computeGraphDepth(selectableGraph),
+      totalNodes: graphWithStructuralEdits.nodes.filter(n => n.opType !== 'Input' && n.opType !== 'Output').length,
+      graphDepth: computeGraphDepth(graphWithStructuralEdits),
       metadata: graph?.metadata,
     }
-  }, [selectableGraph, graph])
+  }, [graphWithStructuralEdits, graph])
 
   const selectedNode: OnnxNode | null = selectedNodeId
     ? filteredGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null
     : null
 
+  const deleteEligibility = useMemo(() => {
+    if (!selectedNodeId || !graphWithStructuralEdits) return undefined
+    return getDeleteEligibility(graphWithStructuralEdits, selectedNodeId)
+  }, [selectedNodeId, graphWithStructuralEdits])
+
   const multiSelection = useMemo(() => {
-    if (selectedNodeIds.size <= 1 || !selectableGraph) return undefined
-    const nodes = selectableGraph.nodes.filter((n) => selectedNodeIds.has(n.id))
+    if (selectedNodeIds.size <= 1 || !graphWithStructuralEdits) return undefined
+    const nodes = graphWithStructuralEdits.nodes.filter((n) => selectedNodeIds.has(n.id))
     return {
       nodes,
       totalParams: nodes.reduce((s, n) => s + n.paramCount, 0),
       totalSizeMB: nodes.reduce((s, n) => s + n.estimatedSizeMB, 0),
     }
-  }, [selectedNodeIds, selectableGraph])
+  }, [selectedNodeIds, graphWithStructuralEdits])
 
   const { ancestors, descendants } = useMemo(() => {
-    if (!selectedNodeId || !selectableGraph) return { ancestors: new Set<string>(), descendants: new Set<string>() }
+    if (!selectedNodeId || !graphWithStructuralEdits) return { ancestors: new Set<string>(), descendants: new Set<string>() }
     return {
-      ancestors: getAncestors(selectableGraph, selectedNodeId),
-      descendants: getDescendants(selectableGraph, selectedNodeId),
+      ancestors: getAncestors(graphWithStructuralEdits, selectedNodeId),
+      descendants: getDescendants(graphWithStructuralEdits, selectedNodeId),
     }
-  }, [selectedNodeId, selectableGraph])
+  }, [selectedNodeId, graphWithStructuralEdits])
 
   const handleFilterChange = (value: string) => {
     setFilterQuery(value)
@@ -487,7 +551,7 @@ function App() {
     const resolved = prevValue !== undefined && typeof prevValue !== 'boolean' ? prevValue : ''
     const parsed = parseAttrEdit(String(newValue), resolved)
     if (parsed === resolved) return
-    setUndoStack(prev => [...prev, { nodeId, attrName, prevValue: resolved }])
+    setUndoStack(prev => [...prev, { kind: 'attr', nodeId, attrName, prevValue: resolved }])
     setAttrOverrides(prev => {
       const next = new Map(prev)
       const existing = { ...(next.get(nodeId) ?? {}) }
@@ -495,6 +559,47 @@ function App() {
       next.set(nodeId, existing)
       return next
     })
+  }
+
+  const handleDeleteNode = (nodeId: string, keepInputPosition: number | null) => {
+    const match = ORIGINAL_NODE_ID_RE.exec(nodeId)
+    if (!match) return
+    setStructuralOps(prev => [...prev, { type: 'delete', nodeId, nodeIndex: Number(match[1]), keepInputPosition }])
+    setUndoStack(prev => [...prev, { kind: 'structural' }])
+    if (selectedNodeId === nodeId || selectedNodeIds.has(nodeId)) {
+      setSelectedNodeId(null)
+      setSelectedNodeIds(new Set())
+    }
+  }
+
+  const handleInsertPassthrough = (targetNodeId: string, inputPosition: number) => {
+    const match = ORIGINAL_NODE_ID_RE.exec(targetNodeId)
+    if (!match) return
+    passthroughCounterRef.current += 1
+    const newNodeId = `passthrough_${passthroughCounterRef.current}`
+    setStructuralOps(prev => [
+      ...prev,
+      { type: 'insertPassthrough', targetNodeId, targetNodeIndex: Number(match[1]), inputPosition, newNodeId },
+    ])
+    setUndoStack(prev => [...prev, { kind: 'structural' }])
+  }
+
+  // Edges are addressed by (target node, tensor name) rather than an edge id, since
+  // React Flow's edge label is repurposed to show the tensor shape, not the tensor
+  // name. Only edges between two original model nodes are insertable: a synthetic
+  // source (an already-inserted passthrough) is a deliberate scope boundary --
+  // chaining edits onto a generated node would require resolving ops against ops
+  // rather than always against the original model.
+  const handleEdgeClick = (targetNodeId: string, tensorName: string) => {
+    if (!graphWithStructuralEdits) return
+    if (!ORIGINAL_NODE_ID_RE.test(targetNodeId)) return
+    const targetNode = graphWithStructuralEdits.nodes.find(n => n.id === targetNodeId)
+    if (!targetNode) return
+    const inputPosition = targetNode.inputs.indexOf(tensorName)
+    if (inputPosition === -1) return
+    const incoming = graphWithStructuralEdits.edges.find(e => e.target === targetNodeId && e.label === tensorName)
+    if (!incoming || incoming.source.startsWith('passthrough_')) return
+    handleInsertPassthrough(targetNodeId, inputPosition)
   }
 
   const handleReset = () => {
@@ -518,11 +623,16 @@ function App() {
   const handleDownloadModified = () => {
     const overridesByIndex = new Map<number, Record<string, string | number>>()
     for (const [nodeId, overrides] of attrOverrides) {
-      const match = /^node_(\d+)_/.exec(nodeId)
+      const match = ORIGINAL_NODE_ID_RE.exec(nodeId)
       if (!match) continue
       overridesByIndex.set(Number(match[1]), overrides)
     }
-    exportModifiedModel(overridesByIndex).then((buf) => {
+    const writerOps: StructuralOp[] = structuralOps.map(op =>
+      op.type === 'delete'
+        ? { type: 'delete', nodeIndex: op.nodeIndex, keepInputPosition: op.keepInputPosition }
+        : { type: 'insertPassthrough', targetNodeIndex: op.targetNodeIndex, inputPosition: op.inputPosition, newNodeName: op.newNodeId },
+    )
+    exportModifiedModel(overridesByIndex, writerOps).then((buf) => {
       const blob = new Blob([buf], { type: 'application/octet-stream' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -583,7 +693,7 @@ function App() {
             onDownload={handleDownload}
             canDownload={status === 'ready'}
             onDownloadModified={handleDownloadModified}
-            canDownloadModified={status === 'ready' && attrOverrides.size > 0}
+            canDownloadModified={status === 'ready' && (attrOverrides.size > 0 || structuralOps.length > 0)}
             onReset={handleReset}
           />
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -594,6 +704,7 @@ function App() {
                 selectedNodeId={selectedNodeId}
                 onNodeSelect={handleNodeSelect}
                 onNodeCtrlClick={handleNodeCtrlClick}
+                onEdgeClick={handleEdgeClick}
                 jumpToNodeId={jumpToNodeId}
                 traceAncestors={ancestors}
                 traceDescendants={descendants}
@@ -617,7 +728,7 @@ function App() {
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               />
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onAttrEdit={handleAttrEdit} />
+                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onAttrEdit={handleAttrEdit} onDeleteNode={handleDeleteNode} deleteEligibility={deleteEligibility} />
               </div>
             </div>
           </div>

@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-1.1.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-1.2.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -46,7 +46,8 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 
 - Click any node to open the Layer Inspector with operator type, node name, parameter count, estimated weight size, tensor shape annotations, and full attribute listing (kernel size, strides, epsilon, group, auto_pad, and every other op attribute stored in the model)
 - Inline attribute editing: click any attribute value to edit it directly; integer, float, string, and array attributes are all editable with type-aware parsing
-- Ctrl+Z undo: step back through attribute changes one at a time
+- Structural editing: delete a node with automatic reconnection, or a picker to choose the reconnection source when it has multiple inputs; insert a passthrough Identity node by clicking any edge. A green "NEW" badge marks inserted nodes in the canvas
+- Ctrl+Z undo: step back through attribute and structural edits alike, in the order they were made
 - Modified badge: edited nodes are marked with a "MOD" indicator in the canvas and a "Modified" label in the inspector
 - Ctrl/Meta+click for multi-select: build a selection across multiple nodes simultaneously
 - Aggregate inspector: combined parameter count, total size, and op type breakdown when multiple nodes are selected
@@ -62,8 +63,9 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 ### Export
 
 - Download the original model buffer as exported by the WASM runtime
-- Export Modified: write attribute edits back into a valid ONNX binary protobuf and download the patched model
-- Initializer weight bytes are preserved byte-for-byte on export; only edited attributes are re-encoded, everything else passes through untouched
+- Export Modified: write attribute edits and structural edits (deleted or inserted nodes) back into a valid ONNX binary protobuf and download the patched model
+- Initializer weight bytes are preserved byte-for-byte on export; only what changed is re-encoded, everything else passes through untouched
+- Inserted nodes are placed to preserve ONNX's required topological node order, so exported files pass strict validation, not just onnxruntime's own lenient loading
 - Exported filename strips the original extension cleanly (e.g. `model_export.onnx`, never `model.onnx_export.onnx`)
 - Export is performed off-thread; the UI remains responsive throughout
 - Copy node metadata to clipboard with a single button press in the Layer Inspector
@@ -72,10 +74,10 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 
 - Off-main-thread ONNX inference via `onnxruntime-web` in a dedicated Web Worker
 - Schema-aware binary protobuf parser for full graph metadata extraction
-- Byte-preserving protobuf writer: patches only the fields that changed, leaving everything else (including large initializer tensors) untouched
+- Byte-preserving protobuf writer: patches only the fields that changed, leaving everything else (including large initializer tensors) untouched; structural edits (node delete/insert) use an array-based rewrite that preserves topological node order
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
-- 199 tests across 13 files; zero TypeScript errors on strict mode
+- 218 tests across 14 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -140,7 +142,7 @@ Browser (main thread)
       LOAD_MODEL        -> MODEL_LOADED + QUANTIZE_ESTIMATE
       BENCHMARK         -> BENCHMARK_RESULT
       EXPORT            -> EXPORT_RESULT (ArrayBuffer transfer)
-      EXPORT_MODIFIED   -> EXPORT_RESULT (attribute edits patched into the original buffer)
+      EXPORT_MODIFIED   -> EXPORT_RESULT (attribute and structural edits patched into the original buffer)
 ```
 
 **Web Worker isolation:** WASM model loading and inference are blocking operations. Isolating them in a worker keeps the UI at 60 fps regardless of model size. The `useOnnxWorker` hook exposes a clean async interface with typed status transitions.
@@ -184,9 +186,10 @@ src/
   lib/
     onnxTypes.ts          OnnxNode, OnnxEdge, OnnxGraph interfaces
     onnxProtoParser.ts    Binary protobuf parser for ONNX ModelProto
-    onnxProtoWriter.ts    Byte-preserving protobuf writer: patches edited attributes into the original buffer
+    onnxProtoWriter.ts    Byte-preserving protobuf writer: attribute edits, node delete/insert
     attrUtils.ts          inferAttrType, parseAttrEdit -- attribute type inference and parsing
-    graphUtils.ts         Pure graph transforms: selection, filter, exclusion, tracing, depth
+    graphUtils.ts         Pure graph transforms: selection, filter, exclusion, tracing, depth,
+                          delete eligibility, delete-with-reconnect, passthrough insertion
     quantize.ts           INT8 size estimation and formatting
   workers/
     onnxWorker.ts         Web Worker: LOAD_MODEL, BENCHMARK, EXPORT, EXPORT_MODIFIED
@@ -204,6 +207,7 @@ src/
     v0.10.test.ts         model metadata, node name, producer/opset/IR version parsing
     v1.0.test.ts          attribute type inference, value parsing, inline editing, MOD badge
     v1.1.test.ts          protobuf writer: int/float/string/array attribute edits, byte preservation
+    v1.2.test.ts          structural editing: delete/insert eligibility, reconnection, topological order
 ```
 
 ---
@@ -212,7 +216,7 @@ src/
 
 ```bash
 npm run dev      # Dev server with COOP/COEP headers
-npm test         # 199 tests across 13 files
+npm test         # 218 tests across 14 files
 npx tsc --noEmit # Type-check without building
 npm run build    # Production build
 ```
@@ -223,6 +227,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 1.2.0 | Structural editing: delete a node with reconnection, insert a passthrough node, both exportable |
 | 1.1.0 | Protobuf writer, Export Modified button, byte-preserving attribute patching |
 | 1.0.0 | Inline attribute editing, Ctrl+Z undo, MOD badge on edited nodes |
 | 0.10.0 | Model metadata (producer, opset, IR version), node names, 3-color favicon |
