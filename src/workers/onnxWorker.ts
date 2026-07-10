@@ -1,5 +1,6 @@
 import * as ort from 'onnxruntime-web'
 import { parseOnnxGraph } from '../lib/onnxParser'
+import { isTfliteBuffer, parseTfliteGraph } from '../lib/tfliteParser'
 import { estimateInt8Size, compressionRatio } from '../lib/quantize'
 import { writeModifiedOnnx, type StructuralOp } from '../lib/onnxProtoWriter'
 import type { OnnxGraph } from '../lib/onnxTypes'
@@ -55,14 +56,18 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
       exportBuffer = null
       ctx.postMessage({ type: 'PROGRESS', payload: { stage: 'Parsing graph', percent: 10 } })
 
-      // Slice a copy for parsing; the original is transferred to InferenceSession
+      const isTflite = isTfliteBuffer(cmd.payload.buffer)
+
+      // Slice a copy for parsing; the original is transferred to InferenceSession (ONNX only)
       const bufferForParsing = cmd.payload.buffer.slice(0)
 
       // Keep a copy for the EXPORT command; the original is consumed by InferenceSession
       exportBuffer = cmd.payload.buffer.slice(0)
 
-      // Parse graph topology from raw protobuf (reliable, no WASM internals)
-      const graph = parseOnnxGraph(bufferForParsing, cmd.payload.filename)
+      // Parse graph topology from raw bytes (reliable, no WASM internals)
+      const graph = isTflite
+        ? parseTfliteGraph(bufferForParsing, cmd.payload.filename)
+        : parseOnnxGraph(bufferForParsing, cmd.payload.filename)
 
       // Store parsed input shapes and types for benchmark (symbolic dims -> 1)
       benchmarkInputShapes = {}
@@ -74,10 +79,13 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
         if (vi.name) benchmarkInputTypes[vi.name] = vi.elemType ?? 1
       }
 
-      ctx.postMessage({ type: 'PROGRESS', payload: { stage: 'Loading WASM runtime', percent: 50 } })
-
-      // Create inference session from the transferred buffer
-      session = await ort.InferenceSession.create(cmd.payload.buffer)
+      // No TFLite runtime exists in this project (this is a read-only viewer for TFLite
+      // models) -- session stays null, which the existing RUN_INFERENCE/BENCHMARK guards
+      // below already handle safely; the UI simply doesn't offer those actions for it.
+      if (!isTflite) {
+        ctx.postMessage({ type: 'PROGRESS', payload: { stage: 'Loading WASM runtime', percent: 50 } })
+        session = await ort.InferenceSession.create(cmd.payload.buffer)
+      }
 
       ctx.postMessage({ type: 'PROGRESS', payload: { stage: 'Ready', percent: 100 } })
       ctx.postMessage({ type: 'MODEL_LOADED', payload: graph })

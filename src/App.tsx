@@ -57,9 +57,10 @@ interface StatsBarProps {
   onDownloadModified: () => void
   canDownloadModified: boolean
   onReset: () => void
+  isReadOnly: boolean
 }
 
-function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, onDownload, canDownload, onDownloadModified, canDownloadModified, onReset }: StatsBarProps) {
+function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, onDownload, canDownload, onDownloadModified, canDownloadModified, onReset, isReadOnly }: StatsBarProps) {
   const quantizeLabel = formatQuantizeEstimate(quantizeEstimate)
   return (
     <div style={{
@@ -79,6 +80,11 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
       <span style={{ color: 'var(--text-primary)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {modelName}
       </span>
+      {isReadOnly && (
+        <span style={{ fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-dim)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: 2, textTransform: 'uppercase' }}>
+          TFLite read-only
+        </span>
+      )}
       <span>{formatNumber(totalParams)} PARAMS</span>
       <span>{totalSizeMB.toFixed(1)} MB</span>
       {quantizeLabel && (
@@ -170,26 +176,28 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
         >
           {layoutDir}
         </button>
-        {benchmarkLabel && (
+        {!isReadOnly && benchmarkLabel && (
           <span style={{ color: 'var(--color-green)' }}>{benchmarkLabel}</span>
         )}
-        <button
-          onClick={onBenchmark}
-          style={{
-            background: 'none',
-            border: '1px solid rgba(255,255,255,0.2)',
-            borderRadius: 2,
-            color: 'var(--text-primary)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 13,
-            letterSpacing: '0.06em',
-            padding: '8px 24px',
-            cursor: 'pointer',
-            textTransform: 'uppercase',
-          }}
-        >
-          Benchmark
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={onBenchmark}
+            style={{
+              background: 'none',
+              border: '1px solid rgba(255,255,255,0.2)',
+              borderRadius: 2,
+              color: 'var(--text-primary)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 13,
+              letterSpacing: '0.06em',
+              padding: '8px 24px',
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+            }}
+          >
+            Benchmark
+          </button>
+        )}
         {canDownload && (
           <button
             onClick={onDownload}
@@ -253,6 +261,10 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
 
 function App() {
   const { loadModel, runBenchmark, exportModel, exportModifiedModel, graph, status, error, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
+  // TFLite support is read-only: no inference session ever exists for it (no TFLite
+  // runtime in this project), so attribute/structural editing, Benchmark, and Export
+  // Modified are all withheld for it -- see tfliteParser.ts and onnxWorker.ts.
+  const isReadOnly = graph?.format === 'tflite'
   const [selectableGraph, setSelectableGraph] = useState<SelectableGraph | null>(null)
   const [filterQuery, setFilterQuery] = useState('')
   const [layoutDir, setLayoutDir] = useState<'TB' | 'LR'>('TB')
@@ -273,6 +285,8 @@ function App() {
   const selectedNodeIdRef = useRef(selectedNodeId)
   selectedNodeIdRef.current = selectedNodeId
   const structuralGraphRef = useRef<SelectableGraph | null>(null)
+  const isReadOnlyRef = useRef(isReadOnly)
+  isReadOnlyRef.current = isReadOnly
   const passthroughCounterRef = useRef(0)
   const isResizing = useRef(false)
   const resizeStartX = useRef(0)
@@ -339,6 +353,7 @@ function App() {
         // Keyboard shortcut only covers the unambiguous case (single or zero
         // reconnection candidates) -- a node with multiple real inputs needs the
         // picker in the Layer Inspector, which needs a click target to choose from.
+        if (isReadOnlyRef.current) return
         const nodeId = selectedNodeIdRef.current
         const g = structuralGraphRef.current
         if (!nodeId || !g) return
@@ -693,8 +708,9 @@ function App() {
             onDownload={handleDownload}
             canDownload={status === 'ready'}
             onDownloadModified={handleDownloadModified}
-            canDownloadModified={status === 'ready' && (attrOverrides.size > 0 || structuralOps.length > 0)}
+            canDownloadModified={status === 'ready' && !isReadOnly && (attrOverrides.size > 0 || structuralOps.length > 0)}
             onReset={handleReset}
+            isReadOnly={isReadOnly}
           />
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
             <div style={{ flex: 1, height: '100%' }}>
@@ -704,7 +720,7 @@ function App() {
                 selectedNodeId={selectedNodeId}
                 onNodeSelect={handleNodeSelect}
                 onNodeCtrlClick={handleNodeCtrlClick}
-                onEdgeClick={handleEdgeClick}
+                onEdgeClick={isReadOnly ? undefined : handleEdgeClick}
                 jumpToNodeId={jumpToNodeId}
                 traceAncestors={ancestors}
                 traceDescendants={descendants}
@@ -728,7 +744,7 @@ function App() {
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               />
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onAttrEdit={handleAttrEdit} onDeleteNode={handleDeleteNode} deleteEligibility={deleteEligibility} />
+                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} />
               </div>
             </div>
           </div>

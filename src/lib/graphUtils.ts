@@ -101,6 +101,19 @@ export const OP_CATEGORIES: Record<string, string> = {
   Reshape: '#1ABC9C', Transpose: '#1ABC9C', Flatten: '#1ABC9C',
   Squeeze: '#1ABC9C', Unsqueeze: '#1ABC9C', Gather: '#1ABC9C',
   Concat: '#1ABC9C', Split: '#1ABC9C', Slice: '#1ABC9C',
+  // TFLite op-name equivalents (SCREAMING_SNAKE_CASE), same category colors as their
+  // ONNX counterparts above -- without these every TFLite node falls through to the
+  // gray "Other" category.
+  CONV_2D: '#C0392B', DEPTHWISE_CONV_2D: '#C0392B', TRANSPOSE_CONV: '#C0392B', CONV_3D: '#C0392B',
+  RELU: '#52C57A', RELU6: '#52C57A', RELU_N1_TO_1: '#52C57A', LOGISTIC: '#52C57A',
+  TANH: '#52C57A', ELU: '#52C57A', LEAKY_RELU: '#52C57A', GELU: '#52C57A',
+  HARD_SWISH: '#52C57A', SOFTMAX: '#52C57A', LOG_SOFTMAX: '#52C57A', PRELU: '#52C57A',
+  L2_NORMALIZATION: '#3498DB', LOCAL_RESPONSE_NORMALIZATION: '#3498DB',
+  FULLY_CONNECTED: '#E67E22', BATCH_MATMUL: '#E67E22',
+  MAX_POOL_2D: '#9B59B6', AVERAGE_POOL_2D: '#9B59B6', L2_POOL_2D: '#9B59B6',
+  RESHAPE: '#1ABC9C', TRANSPOSE: '#1ABC9C', SQUEEZE: '#1ABC9C', EXPAND_DIMS: '#1ABC9C',
+  GATHER: '#1ABC9C', GATHER_ND: '#1ABC9C', CONCATENATION: '#1ABC9C', SPLIT: '#1ABC9C',
+  SPLIT_V: '#1ABC9C', SLICE: '#1ABC9C', STRIDED_SLICE: '#1ABC9C',
 }
 
 export function opCategoryColor(opType: string): string {
