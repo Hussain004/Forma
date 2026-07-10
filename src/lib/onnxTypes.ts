@@ -34,4 +34,5 @@ export interface OnnxGraph {
   totalSizeMB: number
   graphInputs?: ParsedValueInfo[]
   metadata?: ModelMetadata
+  format?: 'onnx' | 'tflite'
 }

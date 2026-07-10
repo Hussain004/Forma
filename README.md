@@ -4,14 +4,14 @@
 
 # Forma
 
-### Browser-Native ONNX Model Visualizer
+### Browser-Native ONNX & TFLite Model Visualizer
 
 **Inspect, analyze, and export neural network models entirely in the browser. No Python. No server. No installation.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-1.2.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-1.3.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -21,7 +21,7 @@
 
 ## Overview
 
-Forma is a fully client-side web application for loading, visualizing, and analyzing ONNX neural network models. Drop a `.onnx` file onto the canvas and the complete computation graph renders immediately: nodes laid out automatically with dagre, every tensor edge routed, each operator inspectable with a single click.
+Forma is a fully client-side web application for loading, visualizing, and analyzing ONNX and TFLite neural network models. Drop a `.onnx` or `.tflite` file onto the canvas and the complete computation graph renders immediately: nodes laid out automatically with dagre, every tensor edge routed, each operator inspectable with a single click. ONNX models are fully editable and exportable; TFLite support is read-only.
 
 All computation runs in the browser via WebAssembly. Models never leave the user's machine.
 
@@ -31,7 +31,7 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 
 ### Graph Visualization
 
-- Drag-and-drop `.onnx` loading with real-time progress indication
+- Drag-and-drop `.onnx` or `.tflite` loading with real-time progress indication
 - Automatic layout via dagre with TB (top-down) and LR (left-right) toggle
 - Pan, zoom, and minimap navigation for large models
 - Distinct visual treatment for operator nodes versus input/output tensor nodes
@@ -60,7 +60,14 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Inference benchmark: forward pass in the WASM runtime with median latency across multiple trials
 - Node exclusion: mark individual nodes as excluded; visual strikethrough applied to excluded cards
 
+### TFLite Support (Read-Only)
+
+- Format detected by the file's own identifier bytes, not just its extension, so drag-and-drop works correctly regardless of how the file is named
+- Full graph visualization, category-colored nodes, tensor shapes, and weight sizes in the same canvas and Layer Inspector as ONNX -- no separate UI
+- Read-only by design: no attribute editing, no node deletion or insertion, no Benchmark or Export Modified. A dim "TFLite read-only" badge in the stats bar makes this explicit; plain Download still works
+
 ### Export
+
 
 - Download the original model buffer as exported by the WASM runtime
 - Export Modified: write attribute edits and structural edits (deleted or inserted nodes) back into a valid ONNX binary protobuf and download the patched model
@@ -74,10 +81,12 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 
 - Off-main-thread ONNX inference via `onnxruntime-web` in a dedicated Web Worker
 - Schema-aware binary protobuf parser for full graph metadata extraction
+- Hand-written binary FlatBuffers parser for TFLite, independent of the protobuf parser -- a completely different wire format (table/vtable/offset-based rather than tag/varint-based), verified against the authoritative TFLite schema
 - Byte-preserving protobuf writer: patches only the fields that changed, leaving everything else (including large initializer tensors) untouched; structural edits (node delete/insert) use an array-based rewrite that preserves topological node order
+- Both parsers build the same graph representation through a shared generic layer, so the graph canvas and inspector need no format-specific code
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
-- 218 tests across 14 files; zero TypeScript errors on strict mode
+- 224 tests across 15 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -137,12 +146,13 @@ Browser (main thread)
 |                           postMessage (ArrayBuffer transfer, zero-copy)
 |
 +-- onnxWorker.ts (Web Worker)
-      onnxruntime-web WASM
-      parseOnnxGraph()  -> OnnxNode[], OnnxEdge[], graphInputs (shapes)
+      onnxruntime-web WASM (ONNX only)
+      isTfliteBuffer()  -> format sniff, decides which parser + whether to create a session
+      parseOnnxGraph() / parseTfliteGraph()  -> OnnxNode[], OnnxEdge[], graphInputs (shapes)
       LOAD_MODEL        -> MODEL_LOADED + QUANTIZE_ESTIMATE
-      BENCHMARK         -> BENCHMARK_RESULT
+      BENCHMARK         -> BENCHMARK_RESULT (ONNX only, no TFLite runtime exists)
       EXPORT            -> EXPORT_RESULT (ArrayBuffer transfer)
-      EXPORT_MODIFIED   -> EXPORT_RESULT (attribute and structural edits patched into the original buffer)
+      EXPORT_MODIFIED   -> EXPORT_RESULT (attribute and structural edits patched into the original buffer, ONNX only)
 ```
 
 **Web Worker isolation:** WASM model loading and inference are blocking operations. Isolating them in a worker keeps the UI at 60 fps regardless of model size. The `useOnnxWorker` hook exposes a clean async interface with typed status transitions.
@@ -184,15 +194,20 @@ src/
   hooks/
     useOnnxWorker.ts      Typed React hook wrapping the ONNX Web Worker
   lib/
-    onnxTypes.ts          OnnxNode, OnnxEdge, OnnxGraph interfaces
+    onnxTypes.ts          OnnxNode, OnnxEdge, OnnxGraph (format: 'onnx' | 'tflite') interfaces
     onnxProtoParser.ts    Binary protobuf parser for ONNX ModelProto
     onnxProtoWriter.ts    Byte-preserving protobuf writer: attribute edits, node delete/insert
+    tfliteParser.ts       Binary FlatBuffers parser for TFLite (read-only): FlatBufferReader,
+                          BuiltinOperator name table, tensor-index-to-name translation
+    onnxParser.ts         buildGraphFromParsed() -- generic ParsedGraph -> OnnxGraph builder
+                          shared by both the ONNX and TFLite parsers
     attrUtils.ts          inferAttrType, parseAttrEdit -- attribute type inference and parsing
     graphUtils.ts         Pure graph transforms: selection, filter, exclusion, tracing, depth,
-                          delete eligibility, delete-with-reconnect, passthrough insertion
+                          delete eligibility, delete-with-reconnect, passthrough insertion,
+                          OP_CATEGORIES (ONNX + TFLite op names)
     quantize.ts           INT8 size estimation and formatting
   workers/
-    onnxWorker.ts         Web Worker: LOAD_MODEL, BENCHMARK, EXPORT, EXPORT_MODIFIED
+    onnxWorker.ts         Web Worker: LOAD_MODEL (format-sniffed), BENCHMARK, EXPORT, EXPORT_MODIFIED
   __tests__/
     graph.test.ts         Graph utilities and selection model
     onnx.test.ts          Worker lifecycle and message contract
@@ -208,6 +223,7 @@ src/
     v1.0.test.ts          attribute type inference, value parsing, inline editing, MOD badge
     v1.1.test.ts          protobuf writer: int/float/string/array attribute edits, byte preservation
     v1.2.test.ts          structural editing: delete/insert eligibility, reconnection, topological order
+    v1.3.test.ts          TFLite: format detection, FlatBuffers fixture round-trip, opcode fallback
 ```
 
 ---
@@ -216,7 +232,7 @@ src/
 
 ```bash
 npm run dev      # Dev server with COOP/COEP headers
-npm test         # 218 tests across 14 files
+npm test         # 224 tests across 15 files
 npx tsc --noEmit # Type-check without building
 npm run build    # Production build
 ```
@@ -227,6 +243,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 1.3.0 | TFLite support (read-only): binary FlatBuffers parser, shared graph/canvas/inspector with ONNX |
 | 1.2.0 | Structural editing: delete a node with reconnection, insert a passthrough node, both exportable |
 | 1.1.0 | Protobuf writer, Export Modified button, byte-preserving attribute patching |
 | 1.0.0 | Inline attribute editing, Ctrl+Z undo, MOD badge on edited nodes |
@@ -247,7 +264,9 @@ npm run build    # Production build
 
 ## Limitations
 
-- **ONNX only.** PyTorch `.pt`, `.safetensors`, and other formats are not supported. Convert to ONNX first using `torch.onnx.export`.
+- **ONNX and TFLite only.** PyTorch `.pt`, `.safetensors`, and other formats are not supported. Convert to ONNX first using `torch.onnx.export` for full editing support.
+- **TFLite is read-only.** No attribute editing, structural editing, benchmarking, or Export Modified -- visualization and inspection only. Editing TFLite models is not planned; ONNX remains the primary edit-and-export format.
+- **TFLite per-op attributes are not shown.** Decoding them requires walking ~100 distinct per-operator-type FlatBuffers schemas (Conv2DOptions, Pool2DOptions, etc.), which is out of scope for the initial read-only viewer. Topology, tensor shapes, and weight sizes are all shown; op-specific parameters (e.g. Conv2D stride) are not yet.
 - **Graph internals depend on runtime exposure.** `onnxruntime-web` does not expose a public API for reading graph node metadata. Forma uses a schema-aware binary parser as the primary path with a runtime-extraction fallback.
 - **INT8 estimates are projections.** The quantization size figures are computed analytically from parameter counts, not from running a quantizer. They are labeled as estimates.
 

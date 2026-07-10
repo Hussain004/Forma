@@ -1,9 +1,12 @@
 import type { OnnxNode, OnnxEdge, OnnxGraph } from './onnxTypes'
-import { parseOnnxProto } from './onnxProtoParser'
+import { parseOnnxProto, type ParsedGraph } from './onnxProtoParser'
 
-export function parseOnnxGraph(buffer: ArrayBuffer, modelName: string): OnnxGraph {
-  const proto = parseOnnxProto(buffer)
-
+// Turns a format-neutral ParsedGraph IR into the app's OnnxGraph shape (node/edge
+// synthesis, tensor-producer wiring, param/size rollups). Nothing here is
+// protobuf-specific -- it operates purely on the ParsedGraph interface, so any parser
+// that produces one (e.g. tfliteParser.ts) gets identical downstream behavior for free:
+// same node id scheme, same edge-by-shared-tensor-name wiring, same rollups.
+export function buildGraphFromParsed(proto: ParsedGraph, modelName: string, format: 'onnx' | 'tflite'): OnnxGraph {
   const nodes: OnnxNode[] = []
   const edges: OnnxEdge[] = []
 
@@ -113,5 +116,9 @@ export function parseOnnxGraph(buffer: ArrayBuffer, modelName: string): OnnxGrap
   const totalParams = nodes.reduce((sum, n) => sum + n.paramCount, 0)
   const totalSizeMB = nodes.reduce((sum, n) => sum + n.estimatedSizeMB, 0)
 
-  return { nodes, edges, modelName, totalParams, totalSizeMB, graphInputs, metadata: proto.metadata }
+  return { nodes, edges, modelName, totalParams, totalSizeMB, graphInputs, metadata: proto.metadata, format }
+}
+
+export function parseOnnxGraph(buffer: ArrayBuffer, modelName: string): OnnxGraph {
+  return buildGraphFromParsed(parseOnnxProto(buffer), modelName, 'onnx')
 }

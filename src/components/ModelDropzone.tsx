@@ -80,7 +80,7 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
       <input
         ref={inputRef}
         type="file"
-        accept=".onnx"
+        accept=".onnx,.tflite"
         onChange={handleFileInput}
         style={{ display: 'none' }}
       />
@@ -142,7 +142,7 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
               fontSize: 11,
             }}
           >
-            Drop another .onnx model
+            Drop another .onnx or .tflite model
           </span>
         </>
       )}
@@ -158,7 +158,7 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
               fontSize: 13,
             }}
           >
-            Drop .onnx model
+            Drop .onnx or .tflite model
           </span>
         </>
       )}

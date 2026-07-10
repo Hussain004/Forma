@@ -44,7 +44,7 @@ describe('App -- initial state', () => {
   it('renders the dropzone on load', () => {
     render(<App />)
     // ModelDropzone idle state shows drop instructions
-    expect(screen.getByText(/drop .onnx model/i)).toBeInTheDocument()
+    expect(screen.getByText(/drop .onnx/i)).toBeInTheDocument()
   })
 
   it('does not render the graph canvas before a model is loaded', () => {
@@ -64,7 +64,7 @@ describe('App -- model load flow', () => {
     })
 
     // Dropzone must be gone once ready.
-    expect(screen.queryByText(/drop .onnx model/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/drop .onnx/i)).not.toBeInTheDocument()
     // React Flow renders a hidden a11y div with "select a node" too -- use getAllByText
     // and confirm at least one visible instance (the LayerInspector placeholder span).
     const instances = screen.getAllByText(/select a node/i)
@@ -120,7 +120,7 @@ describe('App -- single-select model', () => {
     } else {
       // React Flow did not fully mount (no layout in jsdom) -- verify
       // the graph canvas wrapper is present and inspector is in null state.
-      expect(screen.queryByText(/drop .onnx model/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/drop .onnx/i)).not.toBeInTheDocument()
       expect(screen.getAllByText(/select a node/i).length).toBeGreaterThanOrEqual(1)
     }
   })
@@ -159,6 +159,6 @@ describe('App -- single-select model', () => {
     // OP TYPE row appears only when a node is selected; after reload it must be absent.
     expect(screen.queryByText(/^op type$/i)).not.toBeInTheDocument()
     // Dropzone is still absent (model is ready).
-    expect(screen.queryByText(/drop .onnx model/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/drop .onnx/i)).not.toBeInTheDocument()
   })
 })
