@@ -77,11 +77,11 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
       flexShrink: 0,
       letterSpacing: '0.06em',
     }}>
-      <span style={{ color: 'var(--text-primary)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {modelName}
       </span>
       {isReadOnly && (
-        <span style={{ fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-dim)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: 2, textTransform: 'uppercase' }}>
+        <span style={{ fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-dim)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: 2, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
           TFLite read-only
         </span>
       )}
@@ -103,9 +103,9 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
           onFocus={onFilterFocus}
           onBlur={onFilterBlur}
           placeholder="FILTER NODES"
+          className="input-mono"
           style={{
             background: 'transparent',
-            border: '1px solid rgba(255,255,255,0.15)',
             color: 'var(--text-secondary)',
             fontFamily: 'var(--font-mono)',
             fontSize: 13,
@@ -145,6 +145,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   fontFamily: 'var(--font-mono)',
+                  transition: 'background 120ms ease, border-color 120ms ease',
                 }}
               >
                 <span style={{ color: 'var(--text-primary)', fontSize: 13 }}>{node.opType}</span>
@@ -158,62 +159,20 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
           </div>
         )}
       </div>
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button
-          onClick={onLayoutToggle}
-          style={{
-            background: 'none',
-            border: '1px solid rgba(255,255,255,0.2)',
-            borderRadius: 2,
-            color: 'var(--text-primary)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 13,
-            letterSpacing: '0.06em',
-            padding: '8px 24px',
-            cursor: 'pointer',
-            textTransform: 'uppercase',
-          }}
-        >
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, paddingLeft: 24, borderLeft: '1px solid rgba(255,255,255,0.08)' }}>
+        <button onClick={onLayoutToggle} className="btn-bar btn-ghost">
           {layoutDir}
         </button>
         {!isReadOnly && benchmarkLabel && (
           <span style={{ color: 'var(--color-green)' }}>{benchmarkLabel}</span>
         )}
         {!isReadOnly && (
-          <button
-            onClick={onBenchmark}
-            style={{
-              background: 'none',
-              border: '1px solid rgba(255,255,255,0.2)',
-              borderRadius: 2,
-              color: 'var(--text-primary)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 13,
-              letterSpacing: '0.06em',
-              padding: '8px 24px',
-              cursor: 'pointer',
-              textTransform: 'uppercase',
-            }}
-          >
+          <button onClick={onBenchmark} className="btn-bar">
             Benchmark
           </button>
         )}
         {canDownload && (
-          <button
-            onClick={onDownload}
-            style={{
-              background: 'none',
-              border: '1px solid rgba(255,255,255,0.2)',
-              borderRadius: 2,
-              color: 'var(--text-primary)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 13,
-              letterSpacing: '0.06em',
-              padding: '8px 24px',
-              cursor: 'pointer',
-              textTransform: 'uppercase',
-            }}
-          >
+          <button onClick={onDownload} className="btn-bar">
             Download
           </button>
         )}
@@ -221,37 +180,12 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
           <button
             onClick={onDownloadModified}
             title="Export the model with your attribute edits applied"
-            style={{
-              background: 'none',
-              border: '1px solid rgba(255,176,0,0.4)',
-              borderRadius: 2,
-              color: 'var(--color-amber)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 13,
-              letterSpacing: '0.06em',
-              padding: '8px 24px',
-              cursor: 'pointer',
-              textTransform: 'uppercase',
-            }}
+            className="btn-bar btn-primary"
           >
             Export Modified
           </button>
         )}
-        <button
-          onClick={onReset}
-          style={{
-            background: 'none',
-            border: '1px solid rgba(255,255,255,0.2)',
-            borderRadius: 2,
-            color: 'var(--text-primary)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 13,
-            letterSpacing: '0.06em',
-            padding: '8px 24px',
-            cursor: 'pointer',
-            textTransform: 'uppercase',
-          }}
-        >
+        <button onClick={onReset} className="btn-bar btn-ghost">
           Load new
         </button>
       </div>
@@ -739,6 +673,7 @@ function App() {
                   cursor: 'col-resize',
                   zIndex: 1,
                   background: 'transparent',
+                  transition: 'background 140ms ease',
                 }}
                 onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,176,0,0.25)' }}
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}

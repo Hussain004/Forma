@@ -95,9 +95,10 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
         gap: 2,
         fontFamily: 'var(--font-mono)',
         opacity,
+        transition: 'opacity 150ms ease, border-color 150ms ease',
       }}
     >
-      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: accent, borderRadius: '2px 0 0 2px' }} />
+      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: accent, borderRadius: '2px 0 0 2px', transition: 'background-color 150ms ease' }} />
       {data.isModified && (
         <div style={{ position: 'absolute', top: 3, right: 3, fontSize: 7, letterSpacing: '0.08em', color: '#FFB000', background: 'rgba(255,176,0,0.12)', padding: '1px 4px', borderRadius: 1 }}>
           MOD
@@ -156,6 +157,7 @@ function IONode({ data, selected }: NodeProps<Node<IOData>>) {
         gap: 2,
         fontFamily: 'var(--font-mono)',
         opacity,
+        transition: 'opacity 150ms ease, border-color 150ms ease',
       }}
     >
       {data.excluded && <div style={strikeStyle} />}

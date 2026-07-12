@@ -73,7 +73,7 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
         cursor: isBusy ? 'default' : 'pointer',
         background: dragging ? 'rgba(255, 176, 0, 0.05)' : 'var(--bg-base)',
         border: dragging ? '1px solid #FFB000' : '1px solid transparent',
-        transition: 'background 0.12s ease',
+        transition: 'background 140ms ease, border-color 140ms ease',
         userSelect: 'none',
       }}
     >

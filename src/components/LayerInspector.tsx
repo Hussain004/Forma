@@ -5,11 +5,12 @@ import { opCategoryColor, type DeleteEligibility } from '../lib/graphUtils'
 import { parseAttrEdit } from '../lib/attrUtils'
 
 function PencilIcon({ color }: { color: string }) {
+  const style = { transition: 'fill 140ms ease' }
   return (
     <svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true" style={{ flexShrink: 0, display: 'block' }}>
-      <polygon points="1.5,7 6,2.5 7,3.5 2.5,8" fill={color} />
-      <polygon points="1.5,7 2,8.5 2.5,8" fill={color} />
-      <polygon points="6,2.5 7,1.5 8,2.5 7,3.5" fill={color} />
+      <polygon points="1.5,7 6,2.5 7,3.5 2.5,8" fill={color} style={style} />
+      <polygon points="1.5,7 2,8.5 2.5,8" fill={color} style={style} />
+      <polygon points="6,2.5 7,1.5 8,2.5 7,3.5" fill={color} style={style} />
     </svg>
   )
 }
@@ -32,16 +33,8 @@ interface LayerInspectorProps {
 }
 
 const bulkButtonStyle: React.CSSProperties = {
-  background: 'none',
-  border: '1px solid rgba(255,255,255,0.15)',
-  borderRadius: 2,
-  color: 'var(--text-dim)',
-  fontFamily: 'var(--font-mono)',
   fontSize: 10,
-  letterSpacing: '0.06em',
   padding: '2px 10px',
-  cursor: 'pointer',
-  textTransform: 'uppercase',
 }
 
 const CATEGORY_LEGEND: { name: string; color: string }[] = [
@@ -176,8 +169,8 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           </div>
         ))}
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-          <button onClick={onBulkExclude} style={bulkButtonStyle}>EXCLUDE ALL</button>
-          <button onClick={onBulkInclude} style={bulkButtonStyle}>INCLUDE ALL</button>
+          <button onClick={onBulkExclude} className="btn-ghost" style={bulkButtonStyle}>EXCLUDE ALL</button>
+          <button onClick={onBulkInclude} className="btn-ghost" style={bulkButtonStyle}>INCLUDE ALL</button>
         </div>
       </div>
     )
@@ -350,19 +343,8 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
         )}
         <button
           onClick={handleCopy}
-          style={{
-            marginLeft: 'auto',
-            background: 'none',
-            border: '1px solid rgba(255,176,0,0.4)',
-            borderRadius: 2,
-            color: '#FFB000',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 10,
-            letterSpacing: '0.06em',
-            padding: '2px 10px',
-            cursor: 'pointer',
-            textTransform: 'uppercase',
-          }}
+          className="btn-primary"
+          style={{ marginLeft: 'auto', fontSize: 10, padding: '2px 10px' }}
         >
           COPY
         </button>
@@ -392,16 +374,10 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           <button
             onClick={() => node && onToggleExclude?.(node.id)}
             style={{
-              background: 'none',
               border: node.excluded ? '1px solid #FFB000' : '1px solid rgba(255,255,255,0.15)',
-              borderRadius: 2,
               color: node.excluded ? '#FFB000' : 'var(--text-dim)',
-              fontFamily: 'var(--font-mono)',
               fontSize: 10,
-              letterSpacing: '0.06em',
               padding: '2px 10px',
-              cursor: 'pointer',
-              textTransform: 'uppercase',
             }}
           >
             {node.excluded ? 'YES' : 'NO'}
@@ -425,18 +401,8 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                 }
                 onDeleteNode(node.id, deleteEligibility.candidateInputs[0]?.position ?? null)
               }}
-              style={{
-                background: 'none',
-                border: deleteEligibility.eligible ? '1px solid rgba(192,57,43,0.4)' : '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 2,
-                color: deleteEligibility.eligible ? '#C0392B' : 'var(--text-dim)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 10,
-                letterSpacing: '0.06em',
-                padding: '2px 10px',
-                cursor: deleteEligibility.eligible ? 'pointer' : 'default',
-                textTransform: 'uppercase',
-              }}
+              className="btn-danger"
+              style={{ fontSize: 10, padding: '2px 10px' }}
             >
               {deleteEligibility.candidateInputs.length > 1 ? 'Choose source' : 'Delete'}
             </button>
@@ -486,6 +452,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
             const hoverRowStyle: CSSProperties = {
               ...rowStyle,
               background: isHovered && !isEditing ? 'rgba(255,176,0,0.04)' : 'transparent',
+              transition: 'background 140ms ease',
             }
             return (
               <div key={k} style={hoverRowStyle}>
@@ -501,17 +468,16 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                       if (e.key === 'Escape') { e.stopPropagation(); cancelEdit() }
                     }}
                     onBlur={() => commitEdit(k, original)}
+                    className="input-mono"
                     style={{
                       flex: 1,
                       minWidth: 0,
                       background: 'rgba(255,176,0,0.06)',
-                      border: '1px solid rgba(255,176,0,0.5)',
                       borderRadius: 1,
                       color: 'var(--text-primary)',
                       fontFamily: 'var(--font-mono)',
                       fontSize: 12,
                       padding: '0 4px',
-                      outline: 'none',
                     }}
                   />
                 ) : (
