@@ -30,8 +30,62 @@ button {
   cursor: pointer;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  white-space: nowrap;
+  transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease;
 }
 button:hover { border-color: rgba(255, 255, 255, 0.4); }
+button:focus-visible {
+  outline: 1px solid var(--color-amber);
+  outline-offset: 1px;
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+button:disabled:hover { border-color: var(--border-default); }
+
+/* Button hierarchy -- three tiers so importance reads at a glance instead of
+   every action looking identical. Default `button` above is the secondary
+   tier (neutral outline); these are the other three. */
+button.btn-bar {
+  padding: var(--space-2) var(--space-6);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+button.btn-ghost {
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+button.btn-ghost:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.03);
+}
+button.btn-primary {
+  border-color: rgba(255, 176, 0, 0.4);
+  color: var(--color-amber);
+}
+button.btn-primary:hover {
+  border-color: var(--color-amber);
+  background: rgba(255, 176, 0, 0.08);
+}
+button.btn-danger {
+  border-color: rgba(192, 57, 43, 0.4);
+  color: var(--color-error);
+}
+button.btn-danger:hover:not(:disabled) {
+  border-color: var(--color-error);
+  background: rgba(192, 57, 43, 0.08);
+}
+
+.input-mono {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transition: border-color 140ms ease;
+}
+.input-mono:focus {
+  border-color: var(--color-amber);
+  outline: none;
+}
 
 /* React Flow control overrides -- match Avionics Blueprint theme */
 .react-flow__controls {
