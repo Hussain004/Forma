@@ -153,11 +153,33 @@ export function getDescendants(graph: Pick<OnnxGraph, 'nodes' | 'edges'>, nodeId
 }
 
 // Only nodes parsed directly from the loaded model (id format `node_<idx>_<opType>`)
-// are valid structural-edit targets. Synthetic nodes created by insertPassthroughNode
-// use a different id scheme and are deliberately excluded from further editing --
-// chaining edits onto generated nodes would require resolving ops against ops rather
-// than always against the original model, which is out of scope for now.
-const ORIGINAL_NODE_ID_RE = /^node_\d+_/
+// or added via addCustomNode (id format `custom_<n>`) are valid structural-edit
+// targets. Synthetic nodes created by insertPassthroughNode use a different id
+// scheme and are deliberately excluded from further editing -- chaining edits onto
+// a generated passthrough would require resolving ops against ops rather than
+// always against the original model, which is out of scope for now. Custom-added
+// nodes are the one exception: being addressable is the entire point of v1.5.
+const ORIGINAL_NODE_ID_RE = /^node_(\d+)_/
+const CUSTOM_NODE_ID_RE = /^custom_(\d+)$/
+
+// Maps a live node id to the signed numeric index onnxProtoWriter.ts uses to
+// address it: original nodes keep their non-negative position in the source
+// file's GraphProto.node; custom-added nodes get the negation of their creation
+// counter (matching the sentinel convention onnxProtoWriter already used for
+// insertPassthrough's generated entries, just made addressable instead of
+// terminal). Returns null for anything else (passthrough_N, Input/Output
+// pseudo-nodes) -- those aren't valid structural-edit endpoints.
+export function structuralNodeIndex(nodeId: string): number | null {
+  const orig = ORIGINAL_NODE_ID_RE.exec(nodeId)
+  if (orig) return Number(orig[1])
+  const custom = CUSTOM_NODE_ID_RE.exec(nodeId)
+  if (custom) return -Number(custom[1])
+  return null
+}
+
+export function isStructuralEditTarget(nodeId: string): boolean {
+  return structuralNodeIndex(nodeId) !== null
+}
 
 export interface DeleteCandidate {
   tensorName: string
@@ -173,7 +195,7 @@ export interface DeleteEligibility {
 export function getDeleteEligibility(graph: SelectableGraph, nodeId: string): DeleteEligibility {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return { eligible: false, reason: 'Node not found', candidateInputs: [] }
-  if (!ORIGINAL_NODE_ID_RE.test(nodeId)) {
+  if (!isStructuralEditTarget(nodeId)) {
     return { eligible: false, reason: 'Generated nodes cannot be deleted', candidateInputs: [] }
   }
   const realOutputs = node.outputs.filter((o) => o !== '')
@@ -278,14 +300,58 @@ export function insertPassthroughNode(
   }
 }
 
+// A small curated menu for the "Add Node" picker -- common ops with no required
+// attributes, so they're immediately usable through the existing v1.0 inline-edit
+// flow (which can only change an existing attribute's value, not add a new key).
+// Free text always defaults to inputCount 1; the curated entries exist purely for
+// discoverability and to save a click adjusting variadic-input ops like Add/Concat.
+export const CURATED_NODE_TYPES: { opType: string; inputCount: number }[] = [
+  { opType: 'Relu', inputCount: 1 },
+  { opType: 'Sigmoid', inputCount: 1 },
+  { opType: 'Tanh', inputCount: 1 },
+  { opType: 'Softmax', inputCount: 1 },
+  { opType: 'Identity', inputCount: 1 },
+  { opType: 'Add', inputCount: 2 },
+  { opType: 'Sub', inputCount: 2 },
+  { opType: 'Mul', inputCount: 2 },
+  { opType: 'Concat', inputCount: 2 },
+  { opType: 'MatMul', inputCount: 2 },
+]
+
+// Adds a new, initially unconnected node to the canvas -- inputCount placeholder
+// slots (non-empty synthetic names so rewireEdge's truthy check can target them,
+// but matching no real producer, so no edge is drawn) and one real output tensor
+// name other nodes can immediately rewire to consume. newNodeId must be a fresh,
+// unique id from the `custom_<n>` scheme (see structuralNodeIndex above).
+export function addCustomNode(
+  graph: SelectableGraph,
+  newNodeId: string,
+  opType: string,
+  inputCount: number,
+): SelectableGraph {
+  const inputs = Array.from({ length: inputCount }, (_, i) => `__unwired_${newNodeId}_in${i}`)
+  const newNode: SelectableNode = {
+    id: newNodeId,
+    opType,
+    inputs,
+    outputs: [`${newNodeId}_out`],
+    attributes: {},
+    paramCount: 0,
+    estimatedSizeMB: 0,
+    selected: false,
+  }
+  return { ...graph, nodes: [...graph.nodes, newNode] }
+}
+
 export interface RewireValidation {
   valid: boolean
   reason?: string
 }
 
-// Only original model nodes are valid rewire endpoints -- same scope boundary as
-// delete/insertPassthrough (see ORIGINAL_NODE_ID_RE above). No shape/dtype checking:
-// that needs per-op-type shape inference and is out of scope for v1.4.
+// Only original and custom-added nodes are valid rewire endpoints -- same scope
+// boundary as delete/insertPassthrough (see isStructuralEditTarget above). No
+// shape/dtype checking: that needs per-op-type shape inference and is out of
+// scope for v1.4/v1.5.
 export function validateRewire(
   graph: Pick<OnnxGraph, 'nodes' | 'edges'>,
   sourceNodeId: string,
@@ -295,8 +361,8 @@ export function validateRewire(
   if (sourceNodeId === targetNodeId) {
     return { valid: false, reason: 'Cannot connect a node to itself' }
   }
-  if (!ORIGINAL_NODE_ID_RE.test(sourceNodeId) || !ORIGINAL_NODE_ID_RE.test(targetNodeId)) {
-    return { valid: false, reason: 'Only original model nodes can be rewired' }
+  if (!isStructuralEditTarget(sourceNodeId) || !isStructuralEditTarget(targetNodeId)) {
+    return { valid: false, reason: 'Only original or custom-added nodes can be rewired' }
   }
   const source = graph.nodes.find((n) => n.id === sourceNodeId)
   const target = graph.nodes.find((n) => n.id === targetNodeId)

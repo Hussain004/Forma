@@ -4,7 +4,7 @@ import { ModelDropzone } from './components/ModelDropzone'
 import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
 import { useOnnxWorker } from './hooks/useOnnxWorker'
-import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, validateRewire, rewireEdge, type SelectableGraph } from './lib/graphUtils'
+import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, validateRewire, rewireEdge, addCustomNode, structuralNodeIndex, CURATED_NODE_TYPES, type SelectableGraph } from './lib/graphUtils'
 import { formatQuantizeEstimate } from './lib/quantize'
 import type { OnnxNode } from './lib/onnxTypes'
 import type { QuantizeEstimate } from './hooks/useOnnxWorker'
@@ -20,8 +20,7 @@ type GraphEdit =
   | { type: 'delete'; nodeId: string; nodeIndex: number; keepInputPosition: number | null }
   | { type: 'insertPassthrough'; targetNodeId: string; targetNodeIndex: number; inputPosition: number; newNodeId: string }
   | { type: 'rewire'; sourceNodeId: string; sourceNodeIndex: number; targetNodeId: string; targetNodeIndex: number; inputPosition: number }
-
-const ORIGINAL_NODE_ID_RE = /^node_(\d+)_/
+  | { type: 'addNode'; newNodeId: string; newNodeIndex: number; opType: string; inputCount: number }
 
 type UndoEntry =
   | { kind: 'attr'; nodeId: string; attrName: string; prevValue: string | number }
@@ -59,10 +58,20 @@ interface StatsBarProps {
   canDownloadModified: boolean
   onReset: () => void
   isReadOnly: boolean
+  onAddNode: (opType: string, inputCount: number) => void
 }
 
-function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, onDownload, canDownload, onDownloadModified, canDownloadModified, onReset, isReadOnly }: StatsBarProps) {
+function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, onDownload, canDownload, onDownloadModified, canDownloadModified, onReset, isReadOnly, onAddNode }: StatsBarProps) {
   const quantizeLabel = formatQuantizeEstimate(quantizeEstimate)
+  const [showAddNode, setShowAddNode] = useState(false)
+  const [addNodeQuery, setAddNodeQuery] = useState('')
+
+  const commitAddNode = (opType: string, inputCount: number) => {
+    if (!opType.trim()) return
+    onAddNode(opType.trim(), inputCount)
+    setShowAddNode(false)
+    setAddNodeQuery('')
+  }
   return (
     <div style={{
       height: 52,
@@ -164,6 +173,69 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
         <button onClick={onLayoutToggle} className="btn-bar btn-ghost">
           {layoutDir}
         </button>
+        {!isReadOnly && (
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setShowAddNode(v => !v)} className="btn-bar btn-ghost">
+              Add Node
+            </button>
+            {showAddNode && (
+              <div data-testid="add-node-dropdown" style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                width: 220,
+                background: '#1C2128',
+                border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: 2,
+                zIndex: 1000,
+                marginTop: 4,
+                maxHeight: 320,
+                overflowY: 'auto',
+              }}>
+                <div style={{ padding: 8 }}>
+                  <input
+                    data-testid="add-node-query"
+                    autoFocus
+                    type="text"
+                    value={addNodeQuery}
+                    onChange={(e) => setAddNodeQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); commitAddNode(addNodeQuery, 1) }
+                      if (e.key === 'Escape') { setShowAddNode(false); setAddNodeQuery('') }
+                    }}
+                    onBlur={() => setTimeout(() => setShowAddNode(false), 150)}
+                    placeholder="Op type..."
+                    className="input-mono"
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      background: 'transparent',
+                      color: 'var(--text-primary)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 12,
+                      letterSpacing: '0.04em',
+                      padding: '4px 8px',
+                      borderRadius: 2,
+                    }}
+                  />
+                </div>
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  {CURATED_NODE_TYPES.map(({ opType, inputCount }) => (
+                    <button
+                      key={opType}
+                      data-testid={`add-node-option-${opType}`}
+                      onMouseDown={() => commitAddNode(opType, inputCount)}
+                      className="btn-ghost"
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px' }}
+                    >
+                      {opType}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         {!isReadOnly && benchmarkLabel && (
           <span style={{ color: 'var(--color-green)' }}>{benchmarkLabel}</span>
         )}
@@ -223,6 +295,7 @@ function App() {
   const isReadOnlyRef = useRef(isReadOnly)
   isReadOnlyRef.current = isReadOnly
   const passthroughCounterRef = useRef(0)
+  const customNodeCounterRef = useRef(0)
   const isResizing = useRef(false)
   const resizeStartX = useRef(0)
   const resizeStartWidth = useRef(0)
@@ -257,6 +330,7 @@ function App() {
     setStructuralOps([])
     setUndoStack([])
     passthroughCounterRef.current = 0
+    customNodeCounterRef.current = 0
     if (graph) setShowDropzone(false)
   }, [graph])
 
@@ -275,10 +349,10 @@ function App() {
     for (const nodeId of ids) {
       const eligibility = getDeleteEligibility(g, nodeId)
       if (!eligibility.eligible || eligibility.candidateInputs.length > 1) continue
-      const match = ORIGINAL_NODE_ID_RE.exec(nodeId)
-      if (!match) continue
+      const nodeIndex = structuralNodeIndex(nodeId)
+      if (nodeIndex === null) continue
       const keepInputPosition = eligibility.candidateInputs.length === 1 ? eligibility.candidateInputs[0].position : null
-      newOps.push({ type: 'delete', nodeId, nodeIndex: Number(match[1]), keepInputPosition })
+      newOps.push({ type: 'delete', nodeId, nodeIndex, keepInputPosition })
       newUndo.push({ kind: 'structural' })
     }
     if (newOps.length === 0) return
@@ -355,7 +429,9 @@ function App() {
           ? deleteNodeWithReconnect(g, op.nodeId, op.keepInputPosition)
           : op.type === 'insertPassthrough'
             ? insertPassthroughNode(g, op.targetNodeId, op.inputPosition, op.newNodeId)
-            : rewireEdge(g, op.sourceNodeId, op.targetNodeId, op.inputPosition),
+            : op.type === 'rewire'
+              ? rewireEdge(g, op.sourceNodeId, op.targetNodeId, op.inputPosition)
+              : addCustomNode(g, op.newNodeId, op.opType, op.inputCount),
       graphWithOverrides,
     )
   }, [graphWithOverrides, structuralOps])
@@ -528,9 +604,9 @@ function App() {
   }
 
   const handleDeleteNode = (nodeId: string, keepInputPosition: number | null) => {
-    const match = ORIGINAL_NODE_ID_RE.exec(nodeId)
-    if (!match) return
-    setStructuralOps(prev => [...prev, { type: 'delete', nodeId, nodeIndex: Number(match[1]), keepInputPosition }])
+    const nodeIndex = structuralNodeIndex(nodeId)
+    if (nodeIndex === null) return
+    setStructuralOps(prev => [...prev, { type: 'delete', nodeId, nodeIndex, keepInputPosition }])
     setUndoStack(prev => [...prev, { kind: 'structural' }])
     if (selectedNodeId === nodeId || selectedNodeIds.has(nodeId)) {
       setSelectedNodeId(null)
@@ -547,37 +623,49 @@ function App() {
     if (!graphWithStructuralEdits) return
     const validation = validateRewire(graphWithStructuralEdits, sourceNodeId, targetNodeId, inputPosition)
     if (!validation.valid) return
-    const sourceMatch = ORIGINAL_NODE_ID_RE.exec(sourceNodeId)
-    const targetMatch = ORIGINAL_NODE_ID_RE.exec(targetNodeId)
-    if (!sourceMatch || !targetMatch) return
+    const sourceNodeIndex = structuralNodeIndex(sourceNodeId)
+    const targetNodeIndex = structuralNodeIndex(targetNodeId)
+    if (sourceNodeIndex === null || targetNodeIndex === null) return
     setStructuralOps(prev => [
       ...prev,
-      { type: 'rewire', sourceNodeId, sourceNodeIndex: Number(sourceMatch[1]), targetNodeId, targetNodeIndex: Number(targetMatch[1]), inputPosition },
+      { type: 'rewire', sourceNodeId, sourceNodeIndex, targetNodeId, targetNodeIndex, inputPosition },
     ])
     setUndoStack(prev => [...prev, { kind: 'structural' }])
   }
 
   const handleInsertPassthrough = (targetNodeId: string, inputPosition: number) => {
-    const match = ORIGINAL_NODE_ID_RE.exec(targetNodeId)
-    if (!match) return
+    const targetNodeIndex = structuralNodeIndex(targetNodeId)
+    if (targetNodeIndex === null) return
     passthroughCounterRef.current += 1
     const newNodeId = `passthrough_${passthroughCounterRef.current}`
     setStructuralOps(prev => [
       ...prev,
-      { type: 'insertPassthrough', targetNodeId, targetNodeIndex: Number(match[1]), inputPosition, newNodeId },
+      { type: 'insertPassthrough', targetNodeId, targetNodeIndex, inputPosition, newNodeId },
     ])
+    setUndoStack(prev => [...prev, { kind: 'structural' }])
+  }
+
+  // Places a new, initially unconnected node on the canvas -- wiring its inputs and
+  // outputs to the rest of the graph happens afterward via handleRewire (drag a
+  // connection onto one of its input handles, or drag its own output onto some
+  // other node's input handle). Attributes start empty; the curated op list is
+  // chosen to need none, since there's no UI yet to add a new attribute key.
+  const handleAddNode = (opType: string, inputCount: number) => {
+    customNodeCounterRef.current += 1
+    const newNodeIndex = customNodeCounterRef.current
+    setStructuralOps(prev => [...prev, { type: 'addNode', newNodeId: `custom_${newNodeIndex}`, newNodeIndex, opType, inputCount }])
     setUndoStack(prev => [...prev, { kind: 'structural' }])
   }
 
   // Edges are addressed by (target node, tensor name) rather than an edge id, since
   // React Flow's edge label is repurposed to show the tensor shape, not the tensor
-  // name. Only edges between two original model nodes are insertable: a synthetic
-  // source (an already-inserted passthrough) is a deliberate scope boundary --
-  // chaining edits onto a generated node would require resolving ops against ops
+  // name. Only edges targeting an original or custom-added node are insertable: a
+  // synthetic passthrough source/target is a deliberate scope boundary -- chaining
+  // edits onto a generated passthrough would require resolving ops against ops
   // rather than always against the original model.
   const handleEdgeClick = (targetNodeId: string, tensorName: string) => {
     if (!graphWithStructuralEdits) return
-    if (!ORIGINAL_NODE_ID_RE.test(targetNodeId)) return
+    if (structuralNodeIndex(targetNodeId) === null) return
     const targetNode = graphWithStructuralEdits.nodes.find(n => n.id === targetNodeId)
     if (!targetNode) return
     const inputPosition = targetNode.inputs.indexOf(tensorName)
@@ -608,16 +696,18 @@ function App() {
   const handleDownloadModified = () => {
     const overridesByIndex = new Map<number, Record<string, string | number>>()
     for (const [nodeId, overrides] of attrOverrides) {
-      const match = ORIGINAL_NODE_ID_RE.exec(nodeId)
-      if (!match) continue
-      overridesByIndex.set(Number(match[1]), overrides)
+      const nodeIndex = structuralNodeIndex(nodeId)
+      if (nodeIndex === null) continue
+      overridesByIndex.set(nodeIndex, overrides)
     }
     const writerOps: StructuralOp[] = structuralOps.map(op =>
       op.type === 'delete'
         ? { type: 'delete', nodeIndex: op.nodeIndex, keepInputPosition: op.keepInputPosition }
         : op.type === 'insertPassthrough'
           ? { type: 'insertPassthrough', targetNodeIndex: op.targetNodeIndex, inputPosition: op.inputPosition, newNodeName: op.newNodeId }
-          : { type: 'rewire', targetNodeIndex: op.targetNodeIndex, inputPosition: op.inputPosition, sourceNodeIndex: op.sourceNodeIndex },
+          : op.type === 'rewire'
+            ? { type: 'rewire', targetNodeIndex: op.targetNodeIndex, inputPosition: op.inputPosition, sourceNodeIndex: op.sourceNodeIndex }
+            : { type: 'addNode', newNodeIndex: op.newNodeIndex, opType: op.opType, inputCount: op.inputCount },
     )
     exportModifiedModel(overridesByIndex, writerOps).then((buf) => {
       const blob = new Blob([buf], { type: 'application/octet-stream' })
@@ -682,6 +772,7 @@ function App() {
             onDownloadModified={handleDownloadModified}
             canDownloadModified={status === 'ready' && !isReadOnly && (attrOverrides.size > 0 || structuralOps.length > 0)}
             onReset={handleReset}
+            onAddNode={handleAddNode}
             isReadOnly={isReadOnly}
           />
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
