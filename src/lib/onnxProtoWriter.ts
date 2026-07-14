@@ -39,6 +39,10 @@ export type StructuralOp =
   | { type: 'delete'; nodeIndex: number; keepInputPosition: number | null }
   | { type: 'insertPassthrough'; targetNodeIndex: number; inputPosition: number; newNodeName: string }
   | { type: 'rewire'; targetNodeIndex: number; inputPosition: number; sourceNodeIndex: number }
+  // newNodeIndex is a positive counter minted by the UI (graphUtils.structuralNodeIndex
+  // negates it to get the entry's origIndex) -- rewire ops reference the resulting
+  // node the same way they reference any original node, via that negative index.
+  | { type: 'addNode'; newNodeIndex: number; opType: string; inputCount: number }
 
 type AttrKind = 'I' | 'F' | 'S' | 'INTS' | 'FLOATS' | 'OTHER'
 
@@ -252,6 +256,22 @@ function buildIdentityNodeBytes(inputTensor: string, outputTensor: string, name:
   ])
 }
 
+// A freshly added node (v1.5) starts with inputCount empty-string inputs -- ONNX's
+// own convention for "no input at this position" (already used elsewhere in this
+// codebase for TFLite's -1/optional-input translation), not a placeholder tensor
+// name. Any position the user wires up before export gets overwritten in place by
+// rewireInputAtPosition below; anything left unwired exports as a harmlessly
+// omitted optional input rather than a dangling reference to a name nothing
+// produces. No attributes: the curated op list is chosen to need none.
+function buildCustomNodeBytes(opType: string, inputCount: number, outputTensor: string, name: string): Uint8Array {
+  const parts: Uint8Array[] = []
+  for (let i = 0; i < inputCount; i++) parts.push(encodeStringField(NODE_INPUT, ''))
+  parts.push(encodeStringField(NODE_OUTPUT, outputTensor))
+  parts.push(encodeStringField(NODE_NAME, name))
+  parts.push(encodeStringField(NODE_OP_TYPE, opType))
+  return concatBytes(parts)
+}
+
 // Replaces every NODE_INPUT occurrence whose VALUE equals `from` with `to`. Used
 // for delete-reconnection: a deleted node's output tensor name may be consumed at
 // more than one input position on the same downstream node (e.g. Add(x, x)), and
@@ -300,10 +320,18 @@ function topologicalSort(entries: NodeEntry[]): NodeEntry[] {
   return result
 }
 
+// insertPassthrough's generated Identity entries use a negative sentinel origIndex
+// purely to stay unique within one export call (they're never a valid op target,
+// so nothing outside this function ever needs to address them). Offset well clear
+// of addNode's negative range (structuralNodeIndex negates the UI's small custom-node
+// counter, e.g. -1, -2, ...) so the two generated-entry schemes can never collide
+// within the same export.
+const PASSTHROUGH_SENTINEL_BASE = -1_000_000
+
 function applyStructuralOps(nodeEntries: NodeEntry[], structuralOps: StructuralOp[]): NodeEntry[] {
   let entries = nodeEntries
   let insertCounter = 0
-  let hasRewire = false
+  let needsTopoSort = false
 
   for (const op of structuralOps) {
     if (op.type === 'delete') {
@@ -329,10 +357,10 @@ function applyStructuralOps(nodeEntries: NodeEntry[], structuralOps: StructuralO
       insertCounter++
       const newTensorName = `${tensorName}__identity_${insertCounter}_${op.newNodeName}`
       const rewiredTarget = decodeEntry(target.origIndex, rewireInputAtPosition(target.bytes, op.inputPosition, newTensorName))
-      // Sentinel negative origIndex: structural ops only ever address original
-      // (non-negative) indices, so inserted entries are never themselves a valid
-      // op target -- chaining onto a generated node is out of scope by construction.
-      const identityEntry = decodeEntry(-insertCounter, buildIdentityNodeBytes(tensorName, newTensorName, op.newNodeName))
+      // Sentinel negative origIndex (see PASSTHROUGH_SENTINEL_BASE above): inserted
+      // entries are never themselves a valid op target -- chaining onto a generated
+      // passthrough is out of scope by construction.
+      const identityEntry = decodeEntry(PASSTHROUGH_SENTINEL_BASE - insertCounter, buildIdentityNodeBytes(tensorName, newTensorName, op.newNodeName))
 
       // Splice the new node immediately before its consumer, not appended at the
       // end: ONNX requires GraphProto.node to be topologically ordered (a node's
@@ -346,11 +374,20 @@ function applyStructuralOps(nodeEntries: NodeEntry[], structuralOps: StructuralO
       entries = entries.map((e) =>
         e.origIndex === op.targetNodeIndex ? decodeEntry(e.origIndex, rewireInputAtPosition(e.bytes, op.inputPosition, newTensorName)) : e,
       )
-      hasRewire = true
+      needsTopoSort = true
+    } else if (op.type === 'addNode') {
+      const origIndex = -op.newNodeIndex
+      const outputTensor = `custom_${op.newNodeIndex}_out`
+      const name = `custom_${op.newNodeIndex}`
+      entries = [...entries, decodeEntry(origIndex, buildCustomNodeBytes(op.opType, op.inputCount, outputTensor, name))]
+      // A freshly appended node needs no reordering by itself (nothing yet depends
+      // on it, it depends on nothing), but a later rewire in the same batch can make
+      // an earlier-positioned node consume its output, which does need the sort.
+      needsTopoSort = true
     }
   }
 
-  return hasRewire ? topologicalSort(entries) : entries
+  return needsTopoSort ? topologicalSort(entries) : entries
 }
 
 // Decodes graphContent into per-node entries (applying attribute overrides along
