@@ -16,6 +16,10 @@ export interface OnnxNode {
   dimmed?: boolean
   excluded?: boolean
   isModified?: boolean
+  // Set only for a node the user manually placed on the canvas (addCustomNode).
+  // GraphCanvas's dagre layout treats a node with this set as fixed -- it's
+  // excluded from auto-layout entirely rather than repositioned every render.
+  position?: { x: number; y: number }
 }
 
 export interface OnnxEdge {

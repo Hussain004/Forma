@@ -184,20 +184,21 @@ describe('structuralNodeIndex (v1.5)', () => {
 })
 
 describe('addCustomNode (v1.5)', () => {
-  it('adds a floating node with placeholder inputs and a real output, no new edges', () => {
+  it('adds a floating node at the given position with placeholder inputs and a real output, no new edges', () => {
     const g = chainSelectable()
-    const result = addCustomNode(g, 'custom_1', 'Sigmoid', 2)
+    const result = addCustomNode(g, 'custom_1', 'Sigmoid', 2, { x: 120, y: 240 })
     const added = result.nodes.find(n => n.id === 'custom_1')
     expect(added?.opType).toBe('Sigmoid')
     expect(added?.inputs).toEqual(['__unwired_custom_1_in0', '__unwired_custom_1_in1'])
     expect(added?.outputs).toEqual(['custom_1_out'])
+    expect(added?.position).toEqual({ x: 120, y: 240 })
     expect(result.edges).toEqual(g.edges)
   })
 })
 
 describe('getDeleteEligibility accepts custom nodes (v1.5)', () => {
   it('is eligible for a dead-end custom node', () => {
-    const withCustom = addCustomNode(chainSelectable(), 'custom_1', 'Sigmoid', 1)
+    const withCustom = addCustomNode(chainSelectable(), 'custom_1', 'Sigmoid', 1, { x: 0, y: 0 })
     const result = getDeleteEligibility(withCustom, 'custom_1')
     expect(result.eligible).toBe(true)
   })
@@ -205,13 +206,13 @@ describe('getDeleteEligibility accepts custom nodes (v1.5)', () => {
 
 describe('validateRewire accepts custom nodes (v1.5)', () => {
   it('allows rewiring an original node output into a custom node input', () => {
-    const withCustom = addCustomNode(chainSelectable(), 'custom_1', 'Sigmoid', 1)
+    const withCustom = addCustomNode(chainSelectable(), 'custom_1', 'Sigmoid', 1, { x: 0, y: 0 })
     const result = validateRewire(withCustom, 'node_0_Conv', 'custom_1', 0)
     expect(result.valid).toBe(true)
   })
 
   it('allows rewiring a custom node output into an original node input', () => {
-    const withCustom = addCustomNode(chainSelectable(), 'custom_1', 'Sigmoid', 1)
+    const withCustom = addCustomNode(chainSelectable(), 'custom_1', 'Sigmoid', 1, { x: 0, y: 0 })
     const result = validateRewire(withCustom, 'custom_1', 'node_2_Sigmoid', 0)
     expect(result.valid).toBe(true)
   })
@@ -266,30 +267,67 @@ describe('App -- Add Node picker (v1.5)', () => {
     vi.clearAllMocks()
   })
 
-  it('adding a curated node increases the node count in the stats bar', () => {
+  it('picking a curated op enters placement mode without changing the node count yet', () => {
     render(createElement(App))
     act(() => {
       mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
     })
 
-    const before = screen.getByText(/^\d+ NODES$/i).textContent
     fireEvent.click(screen.getByText('Add Node'))
     fireEvent.mouseDown(screen.getByTestId('add-node-option-Relu'))
 
-    const after = screen.getByText(/^\d+ NODES$/i).textContent
-    expect(after).not.toBe(before)
-    expect(after).toBe('2 NODES')
+    expect(screen.getByText(/^1 NODES$/i)).toBeInTheDocument()
   })
 
-  it('free-text entry adds a node with that op type', () => {
+  // React Flow's onInit (needed to resolve screenToFlowPosition for the pane
+  // click) fires asynchronously after mount, not within the synchronous
+  // MODEL_LOADED act() -- give it a tick to land before clicking the pane.
+  const flushReactFlowInit = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+
+  it('clicking the canvas after picking a curated op places the node and increases the count', async () => {
     render(createElement(App))
     act(() => {
       mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
     })
+    await flushReactFlowInit()
+
+    fireEvent.click(screen.getByText('Add Node'))
+    fireEvent.mouseDown(screen.getByTestId('add-node-option-Relu'))
+    const pane = document.querySelector('.react-flow__pane') as Element
+    expect(pane).not.toBeNull()
+    fireEvent.click(pane)
+
+    expect(screen.getByText(/^2 NODES$/i)).toBeInTheDocument()
+  })
+
+  it('Escape cancels a pending placement without adding a node', async () => {
+    render(createElement(App))
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    await flushReactFlowInit()
+
+    fireEvent.click(screen.getByText('Add Node'))
+    fireEvent.mouseDown(screen.getByTestId('add-node-option-Relu'))
+    fireEvent.keyDown(window, { key: 'Escape' })
+    const pane = document.querySelector('.react-flow__pane')
+    fireEvent.click(pane as Element)
+
+    expect(screen.getByText(/^1 NODES$/i)).toBeInTheDocument()
+  })
+
+  it('free-text entry then a canvas click places a node with that op type', async () => {
+    render(createElement(App))
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    await flushReactFlowInit()
 
     fireEvent.click(screen.getByText('Add Node'))
     fireEvent.change(screen.getByTestId('add-node-query'), { target: { value: 'MyCustomOp' } })
     fireEvent.keyDown(screen.getByTestId('add-node-query'), { key: 'Enter' })
+    const pane = document.querySelector('.react-flow__pane')
+    fireEvent.click(pane as Element)
 
     expect(screen.getByText(/^2 NODES$/i)).toBeInTheDocument()
   })

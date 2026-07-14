@@ -20,7 +20,7 @@ type GraphEdit =
   | { type: 'delete'; nodeId: string; nodeIndex: number; keepInputPosition: number | null }
   | { type: 'insertPassthrough'; targetNodeId: string; targetNodeIndex: number; inputPosition: number; newNodeId: string }
   | { type: 'rewire'; sourceNodeId: string; sourceNodeIndex: number; targetNodeId: string; targetNodeIndex: number; inputPosition: number }
-  | { type: 'addNode'; newNodeId: string; newNodeIndex: number; opType: string; inputCount: number }
+  | { type: 'addNode'; newNodeId: string; newNodeIndex: number; opType: string; inputCount: number; position: { x: number; y: number } }
 
 type UndoEntry =
   | { kind: 'attr'; nodeId: string; attrName: string; prevValue: string | number }
@@ -286,6 +286,7 @@ function App() {
   const [attrOverrides, setAttrOverrides] = useState<Map<string, Record<string, string | number>>>(new Map())
   const [structuralOps, setStructuralOps] = useState<GraphEdit[]>([])
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
+  const [pendingNodeType, setPendingNodeType] = useState<{ opType: string; inputCount: number } | null>(null)
   const filterInputRef = useRef<HTMLInputElement>(null)
   const undoStackRef = useRef(undoStack)
   undoStackRef.current = undoStack
@@ -296,6 +297,8 @@ function App() {
   isReadOnlyRef.current = isReadOnly
   const passthroughCounterRef = useRef(0)
   const customNodeCounterRef = useRef(0)
+  const pendingNodeTypeRef = useRef(pendingNodeType)
+  pendingNodeTypeRef.current = pendingNodeType
   const isResizing = useRef(false)
   const resizeStartX = useRef(0)
   const resizeStartWidth = useRef(0)
@@ -331,6 +334,7 @@ function App() {
     setUndoStack([])
     passthroughCounterRef.current = 0
     customNodeCounterRef.current = 0
+    setPendingNodeType(null)
     if (graph) setShowDropzone(false)
   }, [graph])
 
@@ -392,6 +396,10 @@ function App() {
         return
       }
       if (e.key === 'Escape') {
+        if (pendingNodeTypeRef.current) {
+          setPendingNodeType(null)
+          return
+        }
         setFilterQuery('')
         setShowDropdown(false)
         setSelectedNodeIds(new Set())
@@ -431,7 +439,7 @@ function App() {
             ? insertPassthroughNode(g, op.targetNodeId, op.inputPosition, op.newNodeId)
             : op.type === 'rewire'
               ? rewireEdge(g, op.sourceNodeId, op.targetNodeId, op.inputPosition)
-              : addCustomNode(g, op.newNodeId, op.opType, op.inputCount),
+              : addCustomNode(g, op.newNodeId, op.opType, op.inputCount, op.position),
       graphWithOverrides,
     )
   }, [graphWithOverrides, structuralOps])
@@ -650,11 +658,23 @@ function App() {
   // connection onto one of its input handles, or drag its own output onto some
   // other node's input handle). Attributes start empty; the curated op list is
   // chosen to need none, since there's no UI yet to add a new attribute key.
+  // Picking an op type from the StatsBar doesn't place the node immediately --
+  // it enters placement mode (a translucent preview follows the cursor in
+  // GraphCanvas) and handlePlaceNode below commits it wherever the user clicks.
   const handleAddNode = (opType: string, inputCount: number) => {
+    setPendingNodeType({ opType, inputCount })
+  }
+
+  const handlePlaceNode = (position: { x: number; y: number }) => {
+    if (!pendingNodeType) return
     customNodeCounterRef.current += 1
     const newNodeIndex = customNodeCounterRef.current
-    setStructuralOps(prev => [...prev, { type: 'addNode', newNodeId: `custom_${newNodeIndex}`, newNodeIndex, opType, inputCount }])
+    setStructuralOps(prev => [
+      ...prev,
+      { type: 'addNode', newNodeId: `custom_${newNodeIndex}`, newNodeIndex, opType: pendingNodeType.opType, inputCount: pendingNodeType.inputCount, position },
+    ])
     setUndoStack(prev => [...prev, { kind: 'structural' }])
+    setPendingNodeType(null)
   }
 
   // Edges are addressed by (target node, tensor name) rather than an edge id, since
@@ -785,6 +805,8 @@ function App() {
                 onNodeCtrlClick={handleNodeCtrlClick}
                 onEdgeClick={isReadOnly ? undefined : handleEdgeClick}
                 onRewire={isReadOnly ? undefined : handleRewire}
+                pendingNodeType={isReadOnly ? null : pendingNodeType}
+                onPlaceNode={isReadOnly ? undefined : handlePlaceNode}
                 jumpToNodeId={jumpToNodeId}
                 traceAncestors={ancestors}
                 traceDescendants={descendants}
