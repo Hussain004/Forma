@@ -38,6 +38,7 @@ import {
 export type StructuralOp =
   | { type: 'delete'; nodeIndex: number; keepInputPosition: number | null }
   | { type: 'insertPassthrough'; targetNodeIndex: number; inputPosition: number; newNodeName: string }
+  | { type: 'rewire'; targetNodeIndex: number; inputPosition: number; sourceNodeIndex: number }
 
 type AttrKind = 'I' | 'F' | 'S' | 'INTS' | 'FLOATS' | 'OTHER'
 
@@ -271,9 +272,38 @@ function rewireInputAtPosition(bytes: Uint8Array, position: number, to: string):
   )
 }
 
+// Delete and insertPassthrough never change relative node order (delete only
+// removes; insert always splices its new node immediately before its consumer),
+// so they can't break ONNX's topological-order requirement. Rewire is different:
+// it can point a node's input at ANY other original node's output, including one
+// that currently sits later in the list, which the raw entries array would then
+// serialize out of order. DFS postorder over the producer graph fixes that --
+// cycles can't occur here since validateRewire (graphUtils.ts) already rejects
+// them before an op ever reaches the writer, so this never needs cycle recovery.
+function topologicalSort(entries: NodeEntry[]): NodeEntry[] {
+  const producerOf = new Map<string, NodeEntry>()
+  for (const e of entries) {
+    for (const out of e.outputs) if (out) producerOf.set(out, e)
+  }
+  const visited = new Set<NodeEntry>()
+  const result: NodeEntry[] = []
+  function visit(e: NodeEntry) {
+    if (visited.has(e)) return
+    visited.add(e)
+    for (const inp of e.inputs) {
+      const producer = inp ? producerOf.get(inp) : undefined
+      if (producer) visit(producer)
+    }
+    result.push(e)
+  }
+  for (const e of entries) visit(e)
+  return result
+}
+
 function applyStructuralOps(nodeEntries: NodeEntry[], structuralOps: StructuralOp[]): NodeEntry[] {
   let entries = nodeEntries
   let insertCounter = 0
+  let hasRewire = false
 
   for (const op of structuralOps) {
     if (op.type === 'delete') {
@@ -309,10 +339,18 @@ function applyStructuralOps(nodeEntries: NodeEntry[], structuralOps: StructuralO
       // inputs must be defined by an earlier node), and the target already follows
       // its own producer, so inserting directly before it preserves that ordering.
       entries = [...entries.slice(0, idx), identityEntry, rewiredTarget, ...entries.slice(idx + 1)]
+    } else if (op.type === 'rewire') {
+      const sourceEntry = entries.find((e) => e.origIndex === op.sourceNodeIndex)
+      const newTensorName = sourceEntry?.outputs[0]
+      if (!newTensorName) continue
+      entries = entries.map((e) =>
+        e.origIndex === op.targetNodeIndex ? decodeEntry(e.origIndex, rewireInputAtPosition(e.bytes, op.inputPosition, newTensorName)) : e,
+      )
+      hasRewire = true
     }
   }
 
-  return entries
+  return hasRewire ? topologicalSort(entries) : entries
 }
 
 // Decodes graphContent into per-node entries (applying attribute overrides along

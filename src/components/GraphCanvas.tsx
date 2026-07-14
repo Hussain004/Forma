@@ -52,7 +52,7 @@ const handleStyle = {
   border: 'none',
 }
 
-type OperatorData = { opType: string; paramCount: number; shapeLabel: string; dimmed: boolean; excluded: boolean; traceRole: TraceRole; traceActive: boolean; isModified: boolean; isSynthetic: boolean }
+type OperatorData = { opType: string; paramCount: number; shapeLabel: string; dimmed: boolean; excluded: boolean; traceRole: TraceRole; traceActive: boolean; isModified: boolean; isSynthetic: boolean; inputCount: number }
 type IOData = { label: string; shapeLabel: string; dimmed: boolean; excluded: boolean; traceRole: TraceRole; traceActive: boolean }
 
 const strikeStyle: React.CSSProperties = {
@@ -110,7 +110,18 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
         </div>
       )}
       {data.excluded && <div style={strikeStyle} />}
-      <Handle type="target" position={Position.Top} style={handleStyle} />
+      {/* One target handle per input position (not one shared handle) -- lets a
+          drag-to-rewire connection specify exactly which input slot it replaces,
+          the same way an existing edge already identifies its slot by tensor name. */}
+      {Array.from({ length: Math.max(data.inputCount, 1) }, (_, i) => (
+        <Handle
+          key={i}
+          id={`in-${i}`}
+          type="target"
+          position={Position.Top}
+          style={{ ...handleStyle, left: `${((i + 1) / (Math.max(data.inputCount, 1) + 1)) * 100}%` }}
+        />
+      ))}
       <div style={{ color: '#E8EAF0', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {data.opType}
       </div>
@@ -185,6 +196,7 @@ interface GraphCanvasProps {
   onNodeSelect: (nodeId: string) => void
   onNodeCtrlClick?: (nodeId: string) => void
   onEdgeClick?: (targetNodeId: string, tensorName: string) => void
+  onRewire?: (sourceNodeId: string, targetNodeId: string, inputPosition: number) => void
   jumpToNodeId?: string | null
   traceAncestors?: Set<string>
   traceDescendants?: Set<string>
@@ -222,10 +234,11 @@ function toFlowGraph(
       selected: (n as SelectableNode).selected ?? (n.id === selectedNodeId),
       data: isIO
         ? { label: n.outputs[0] ?? n.inputs[0] ?? n.opType, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive }
-        : { opType: n.opType, paramCount: n.paramCount, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive, isModified: n.isModified ?? false, isSynthetic: !ORIGINAL_NODE_ID_RE.test(n.id) },
+        : { opType: n.opType, paramCount: n.paramCount, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive, isModified: n.isModified ?? false, isSynthetic: !ORIGINAL_NODE_ID_RE.test(n.id), inputCount: n.inputs.length },
     }
   })
 
+  const nodeById = new Map(onnxNodes.map(n => [n.id, n]))
   const nodeIdSet = new Set(onnxNodes.map(n => n.id))
   const invalidIds = new Set(
     validateEdges({ nodes: onnxNodes, edges: onnxEdges, modelName: '', totalParams: 0, totalSizeMB: 0 }).map(e => e.id),
@@ -235,10 +248,12 @@ function toFlowGraph(
     .map(e => {
       const adjacent = selectedNodeId && (e.source === selectedNodeId || e.target === selectedNodeId)
       const shapeLabel = adjacent && e.shape ? formatShape(e.shape) : undefined
+      const inputPosition = e.label ? nodeById.get(e.target)?.inputs.indexOf(e.label) ?? -1 : -1
       return {
         id: e.id,
         source: e.source,
         target: e.target,
+        targetHandle: inputPosition >= 0 ? `in-${inputPosition}` : undefined,
         label: shapeLabel,
         labelStyle: { fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#5A6070' },
         labelBgStyle: { fill: '#12161A', fillOpacity: 0.85 },
@@ -261,7 +276,7 @@ function JumpController({ jumpToNodeId }: { jumpToNodeId?: string | null }) {
 
 const EMPTY_TRACE: Set<string> = new Set()
 
-export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, onEdgeClick, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE, layoutDir = 'TB' }: GraphCanvasProps) {
+export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, onEdgeClick, onRewire, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE, layoutDir = 'TB' }: GraphCanvasProps) {
   const computed = useMemo(
     () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir),
     [onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir],
@@ -301,6 +316,12 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
           const original = onnxEdges.find((e) => e.id === edge.id)
           if (original?.label) onEdgeClick?.(edge.target, original.label)
         }}
+        onConnect={(connection) => {
+          const match = connection.targetHandle ? /^in-(\d+)$/.exec(connection.targetHandle) : null
+          if (!match || !connection.source || !connection.target) return
+          onRewire?.(connection.source, connection.target, Number(match[1]))
+        }}
+        connectionLineStyle={{ stroke: '#FFB000', strokeWidth: 1 }}
         onNodeMouseEnter={(event, node) => {
           setHoveredNodeId(node.id)
           setTooltipPos({ x: event.clientX, y: event.clientY })
