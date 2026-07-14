@@ -27,6 +27,7 @@ interface LayerInspectorProps {
   }
   onBulkExclude?: () => void
   onBulkInclude?: () => void
+  onBulkDelete?: () => void
   onAttrEdit?: (nodeId: string, attrName: string, value: string | number) => void
   onDeleteNode?: (nodeId: string, keepInputPosition: number | null) => void
   deleteEligibility?: DeleteEligibility
@@ -116,7 +117,7 @@ function sensitivityColor(params: number): string {
   return '#52C57A'
 }
 
-export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onAttrEdit, onDeleteNode, deleteEligibility }: LayerInspectorProps) {
+export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onBulkDelete, onAttrEdit, onDeleteNode, deleteEligibility }: LayerInspectorProps) {
   const [editingAttr, setEditingAttr] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [hoveredAttr, setHoveredAttr] = useState<string | null>(null)
@@ -171,6 +172,9 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button onClick={onBulkExclude} className="btn-ghost" style={bulkButtonStyle}>EXCLUDE ALL</button>
           <button onClick={onBulkInclude} className="btn-ghost" style={bulkButtonStyle}>INCLUDE ALL</button>
+          {onBulkDelete && (
+            <button data-testid="bulk-delete-button" onClick={onBulkDelete} className="btn-danger" style={bulkButtonStyle}>DELETE ALL</button>
+          )}
         </div>
       </div>
     )

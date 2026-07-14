@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-1.3.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-1.4.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -47,11 +47,12 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Click any node to open the Layer Inspector with operator type, node name, parameter count, estimated weight size, tensor shape annotations, and full attribute listing (kernel size, strides, epsilon, group, auto_pad, and every other op attribute stored in the model)
 - Inline attribute editing: click any attribute value to edit it directly; integer, float, string, and array attributes are all editable with type-aware parsing
 - Structural editing: delete a node with automatic reconnection, or a picker to choose the reconnection source when it has multiple inputs; insert a passthrough Identity node by clicking any edge. A green "NEW" badge marks inserted nodes in the canvas
-- Ctrl+Z undo: step back through attribute and structural edits alike, in the order they were made
+- Manual rewiring: drag a connection from any node's output to a specific input handle on another node to redirect that input; each input on a multi-input node (Add, Concat, etc.) gets its own handle so the drop target is never ambiguous. Self-connections and connections that would create a cycle are rejected automatically
+- Ctrl+Z undo: step back through attribute, structural, and rewire edits alike, in the order they were made
 - Modified badge: edited nodes are marked with a "MOD" indicator in the canvas and a "Modified" label in the inspector
 - Ctrl/Meta+click for multi-select: build a selection across multiple nodes simultaneously
 - Aggregate inspector: combined parameter count, total size, and op type breakdown when multiple nodes are selected
-- Bulk exclude/include: EXCLUDE ALL and INCLUDE ALL buttons apply to the full selection at once
+- Bulk exclude/include/delete: EXCLUDE ALL, INCLUDE ALL, and DELETE ALL buttons apply to the full selection at once (delete skips any node whose reconnection is ambiguous, same rule as the single-node Delete key)
 - Ancestor/descendant trace: selecting a node highlights all upstream producers (blue accent) and downstream consumers (green accent), dimming unrelated nodes
 - Op type histogram with graph depth: model-wide operator breakdown sorted by frequency, plus longest-path depth, shown when no node is selected
 - Model metadata panel: producer name and version, opset version, and IR version shown in the summary view
@@ -70,9 +71,9 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 
 
 - Download the original model buffer as exported by the WASM runtime
-- Export Modified: write attribute edits and structural edits (deleted or inserted nodes) back into a valid ONNX binary protobuf and download the patched model
+- Export Modified: write attribute edits and structural edits (deleted, inserted, or rewired nodes) back into a valid ONNX binary protobuf and download the patched model
 - Initializer weight bytes are preserved byte-for-byte on export; only what changed is re-encoded, everything else passes through untouched
-- Inserted nodes are placed to preserve ONNX's required topological node order, so exported files pass strict validation, not just onnxruntime's own lenient loading
+- Inserted and rewired nodes are placed to preserve ONNX's required topological node order, so exported files pass strict validation, not just onnxruntime's own lenient loading
 - Exported filename strips the original extension cleanly (e.g. `model_export.onnx`, never `model.onnx_export.onnx`)
 - Export is performed off-thread; the UI remains responsive throughout
 - Copy node metadata to clipboard with a single button press in the Layer Inspector
@@ -82,11 +83,11 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Off-main-thread ONNX inference via `onnxruntime-web` in a dedicated Web Worker
 - Schema-aware binary protobuf parser for full graph metadata extraction
 - Hand-written binary FlatBuffers parser for TFLite, independent of the protobuf parser -- a completely different wire format (table/vtable/offset-based rather than tag/varint-based), verified against the authoritative TFLite schema
-- Byte-preserving protobuf writer: patches only the fields that changed, leaving everything else (including large initializer tensors) untouched; structural edits (node delete/insert) use an array-based rewrite that preserves topological node order
+- Byte-preserving protobuf writer: patches only the fields that changed, leaving everything else (including large initializer tensors) untouched; structural edits (node delete/insert/rewire) use an array-based rewrite that preserves topological node order, re-sorting via DFS postorder when a rewire connects to a node that was serialized later in the original file
 - Both parsers build the same graph representation through a shared generic layer, so the graph canvas and inspector need no format-specific code
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
-- 224 tests across 15 files; zero TypeScript errors on strict mode
+- 235 tests across 16 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -204,6 +205,7 @@ src/
     attrUtils.ts          inferAttrType, parseAttrEdit -- attribute type inference and parsing
     graphUtils.ts         Pure graph transforms: selection, filter, exclusion, tracing, depth,
                           delete eligibility, delete-with-reconnect, passthrough insertion,
+                          rewire validation (cycle/self-connect) and edge rewiring,
                           OP_CATEGORIES (ONNX + TFLite op names)
     quantize.ts           INT8 size estimation and formatting
   workers/
@@ -224,6 +226,8 @@ src/
     v1.1.test.ts          protobuf writer: int/float/string/array attribute edits, byte preservation
     v1.2.test.ts          structural editing: delete/insert eligibility, reconnection, topological order
     v1.3.test.ts          TFLite: format detection, FlatBuffers fixture round-trip, opcode fallback
+    v1.4.test.ts          Manual rewiring: cycle/self-connect validation, writer topological
+                          re-sort, bulk delete UI
 ```
 
 ---
@@ -232,7 +236,7 @@ src/
 
 ```bash
 npm run dev      # Dev server with COOP/COEP headers
-npm test         # 224 tests across 15 files
+npm test         # 235 tests across 16 files
 npx tsc --noEmit # Type-check without building
 npm run build    # Production build
 ```
@@ -243,6 +247,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 1.4.0 | Manual rewiring: drag-to-connect any output to a specific input handle, cycle/self-connect validation, bulk delete for multi-select |
 | 1.3.0 | TFLite support (read-only): binary FlatBuffers parser, shared graph/canvas/inspector with ONNX |
 | 1.2.0 | Structural editing: delete a node with reconnection, insert a passthrough node, both exportable |
 | 1.1.0 | Protobuf writer, Export Modified button, byte-preserving attribute patching |

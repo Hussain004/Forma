@@ -120,7 +120,7 @@ export function opCategoryColor(opType: string): string {
   return OP_CATEGORIES[opType] ?? 'rgba(255,255,255,0.15)'
 }
 
-export function getAncestors(graph: OnnxGraph, nodeId: string): Set<string> {
+export function getAncestors(graph: Pick<OnnxGraph, 'nodes' | 'edges'>, nodeId: string): Set<string> {
   const result = new Set<string>()
   const stack = [nodeId]
   while (stack.length > 0) {
@@ -136,7 +136,7 @@ export function getAncestors(graph: OnnxGraph, nodeId: string): Set<string> {
   return result
 }
 
-export function getDescendants(graph: OnnxGraph, nodeId: string): Set<string> {
+export function getDescendants(graph: Pick<OnnxGraph, 'nodes' | 'edges'>, nodeId: string): Set<string> {
   const result = new Set<string>()
   const stack = [nodeId]
   while (stack.length > 0) {
@@ -275,6 +275,70 @@ export function insertPassthroughNode(
         { id: `${incoming.source}->${newNodeId}@${tensorName}`, source: incoming.source, target: newNodeId, label: tensorName, shape: incoming.shape },
         { id: `${newNodeId}->${targetNodeId}@${newTensorName}`, source: newNodeId, target: targetNodeId, label: newTensorName, shape: incoming.shape },
       ]),
+  }
+}
+
+export interface RewireValidation {
+  valid: boolean
+  reason?: string
+}
+
+// Only original model nodes are valid rewire endpoints -- same scope boundary as
+// delete/insertPassthrough (see ORIGINAL_NODE_ID_RE above). No shape/dtype checking:
+// that needs per-op-type shape inference and is out of scope for v1.4.
+export function validateRewire(
+  graph: Pick<OnnxGraph, 'nodes' | 'edges'>,
+  sourceNodeId: string,
+  targetNodeId: string,
+  inputPosition: number,
+): RewireValidation {
+  if (sourceNodeId === targetNodeId) {
+    return { valid: false, reason: 'Cannot connect a node to itself' }
+  }
+  if (!ORIGINAL_NODE_ID_RE.test(sourceNodeId) || !ORIGINAL_NODE_ID_RE.test(targetNodeId)) {
+    return { valid: false, reason: 'Only original model nodes can be rewired' }
+  }
+  const source = graph.nodes.find((n) => n.id === sourceNodeId)
+  const target = graph.nodes.find((n) => n.id === targetNodeId)
+  if (!source || !target) return { valid: false, reason: 'Node not found' }
+  const sourceTensor = source.outputs.find((o) => o !== '')
+  if (!sourceTensor) return { valid: false, reason: 'Source has no output' }
+  if (!target.inputs[inputPosition]) return { valid: false, reason: 'Invalid input position' }
+  if (getDescendants(graph, targetNodeId).has(sourceNodeId)) {
+    return { valid: false, reason: 'Would create a cycle' }
+  }
+  return { valid: true }
+}
+
+// inputPosition indexes targetNode.inputs. Replaces whatever currently feeds that
+// position with sourceNode's (first real) output -- same position-based addressing
+// as insertPassthroughNode, and same single-primary-output assumption already used
+// by deleteNodeWithReconnect. Caller is expected to have checked validateRewire first.
+export function rewireEdge(
+  graph: SelectableGraph,
+  sourceNodeId: string,
+  targetNodeId: string,
+  inputPosition: number,
+): SelectableGraph {
+  const source = graph.nodes.find((n) => n.id === sourceNodeId)
+  const target = graph.nodes.find((n) => n.id === targetNodeId)
+  if (!source || !target) return graph
+  const newTensorName = source.outputs.find((o) => o !== '')
+  const oldTensorName = target.inputs[inputPosition]
+  if (!newTensorName || !oldTensorName || newTensorName === oldTensorName) return graph
+
+  const rewiredTarget = { ...target, inputs: target.inputs.map((inp, i) => (i === inputPosition ? newTensorName : inp)) }
+  const newEdge: OnnxGraph['edges'][number] = {
+    id: `${sourceNodeId}->${targetNodeId}@${newTensorName}`,
+    source: sourceNodeId,
+    target: targetNodeId,
+    label: newTensorName,
+  }
+
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) => (n.id === targetNodeId ? rewiredTarget : n)),
+    edges: graph.edges.filter((e) => !(e.target === targetNodeId && e.label === oldTensorName)).concat([newEdge]),
   }
 }
 

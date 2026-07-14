@@ -4,7 +4,7 @@ import { ModelDropzone } from './components/ModelDropzone'
 import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
 import { useOnnxWorker } from './hooks/useOnnxWorker'
-import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, type SelectableGraph } from './lib/graphUtils'
+import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, validateRewire, rewireEdge, type SelectableGraph } from './lib/graphUtils'
 import { formatQuantizeEstimate } from './lib/quantize'
 import type { OnnxNode } from './lib/onnxTypes'
 import type { QuantizeEstimate } from './hooks/useOnnxWorker'
@@ -19,6 +19,7 @@ import './index.css'
 type GraphEdit =
   | { type: 'delete'; nodeId: string; nodeIndex: number; keepInputPosition: number | null }
   | { type: 'insertPassthrough'; targetNodeId: string; targetNodeIndex: number; inputPosition: number; newNodeId: string }
+  | { type: 'rewire'; sourceNodeId: string; sourceNodeIndex: number; targetNodeId: string; targetNodeIndex: number; inputPosition: number }
 
 const ORIGINAL_NODE_ID_RE = /^node_(\d+)_/
 
@@ -216,8 +217,8 @@ function App() {
   const filterInputRef = useRef<HTMLInputElement>(null)
   const undoStackRef = useRef(undoStack)
   undoStackRef.current = undoStack
-  const selectedNodeIdRef = useRef(selectedNodeId)
-  selectedNodeIdRef.current = selectedNodeId
+  const selectedNodeIdsRef = useRef(selectedNodeIds)
+  selectedNodeIdsRef.current = selectedNodeIds
   const structuralGraphRef = useRef<SelectableGraph | null>(null)
   const isReadOnlyRef = useRef(isReadOnly)
   isReadOnlyRef.current = isReadOnly
@@ -259,6 +260,34 @@ function App() {
     if (graph) setShowDropzone(false)
   }, [graph])
 
+  // Shared by the Delete keyboard shortcut and the "Delete all" bulk button --
+  // covers a single selected node too, since selectedNodeIds always contains the
+  // primary selection (see applySelection). Only unambiguous nodes (dead-end or a
+  // single reconnect candidate) are deleted; anything with multiple candidate
+  // inputs is silently skipped, same as the pre-v1.4 single-node keyboard path --
+  // that ambiguity needs the picker in the Layer Inspector, which needs a single
+  // click target to choose from.
+  const applyBulkDelete = (ids: Set<string>) => {
+    const g = structuralGraphRef.current
+    if (!g || ids.size === 0) return
+    const newOps: GraphEdit[] = []
+    const newUndo: UndoEntry[] = []
+    for (const nodeId of ids) {
+      const eligibility = getDeleteEligibility(g, nodeId)
+      if (!eligibility.eligible || eligibility.candidateInputs.length > 1) continue
+      const match = ORIGINAL_NODE_ID_RE.exec(nodeId)
+      if (!match) continue
+      const keepInputPosition = eligibility.candidateInputs.length === 1 ? eligibility.candidateInputs[0].position : null
+      newOps.push({ type: 'delete', nodeId, nodeIndex: Number(match[1]), keepInputPosition })
+      newUndo.push({ kind: 'structural' })
+    }
+    if (newOps.length === 0) return
+    setStructuralOps(prev => [...prev, ...newOps])
+    setUndoStack(prev => [...prev, ...newUndo])
+    setSelectedNodeId(null)
+    setSelectedNodeIds(new Set())
+  }
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName
@@ -284,22 +313,8 @@ function App() {
         return
       }
       if (e.key === 'Delete' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
-        // Keyboard shortcut only covers the unambiguous case (single or zero
-        // reconnection candidates) -- a node with multiple real inputs needs the
-        // picker in the Layer Inspector, which needs a click target to choose from.
         if (isReadOnlyRef.current) return
-        const nodeId = selectedNodeIdRef.current
-        const g = structuralGraphRef.current
-        if (!nodeId || !g) return
-        const eligibility = getDeleteEligibility(g, nodeId)
-        if (!eligibility.eligible || eligibility.candidateInputs.length > 1) return
-        const match = ORIGINAL_NODE_ID_RE.exec(nodeId)
-        if (!match) return
-        const keepInputPosition = eligibility.candidateInputs.length === 1 ? eligibility.candidateInputs[0].position : null
-        setStructuralOps(prev => [...prev, { type: 'delete', nodeId, nodeIndex: Number(match[1]), keepInputPosition }])
-        setUndoStack(prev => [...prev, { kind: 'structural' }])
-        setSelectedNodeId(null)
-        setSelectedNodeIds(new Set())
+        applyBulkDelete(selectedNodeIdsRef.current)
         return
       }
       if (e.key === 'Escape') {
@@ -338,7 +353,9 @@ function App() {
       (g, op) =>
         op.type === 'delete'
           ? deleteNodeWithReconnect(g, op.nodeId, op.keepInputPosition)
-          : insertPassthroughNode(g, op.targetNodeId, op.inputPosition, op.newNodeId),
+          : op.type === 'insertPassthrough'
+            ? insertPassthroughNode(g, op.targetNodeId, op.inputPosition, op.newNodeId)
+            : rewireEdge(g, op.sourceNodeId, op.targetNodeId, op.inputPosition),
       graphWithOverrides,
     )
   }, [graphWithOverrides, structuralOps])
@@ -521,6 +538,25 @@ function App() {
     }
   }
 
+  const handleBulkDelete = () => applyBulkDelete(selectedNodeIds)
+
+  // Fired by GraphCanvas when a drag-to-connect lands on a specific input handle.
+  // validateRewire covers the self-connection/original-node/cycle checks; an
+  // invalid drop is silently ignored, same convention as handleEdgeClick below.
+  const handleRewire = (sourceNodeId: string, targetNodeId: string, inputPosition: number) => {
+    if (!graphWithStructuralEdits) return
+    const validation = validateRewire(graphWithStructuralEdits, sourceNodeId, targetNodeId, inputPosition)
+    if (!validation.valid) return
+    const sourceMatch = ORIGINAL_NODE_ID_RE.exec(sourceNodeId)
+    const targetMatch = ORIGINAL_NODE_ID_RE.exec(targetNodeId)
+    if (!sourceMatch || !targetMatch) return
+    setStructuralOps(prev => [
+      ...prev,
+      { type: 'rewire', sourceNodeId, sourceNodeIndex: Number(sourceMatch[1]), targetNodeId, targetNodeIndex: Number(targetMatch[1]), inputPosition },
+    ])
+    setUndoStack(prev => [...prev, { kind: 'structural' }])
+  }
+
   const handleInsertPassthrough = (targetNodeId: string, inputPosition: number) => {
     const match = ORIGINAL_NODE_ID_RE.exec(targetNodeId)
     if (!match) return
@@ -579,7 +615,9 @@ function App() {
     const writerOps: StructuralOp[] = structuralOps.map(op =>
       op.type === 'delete'
         ? { type: 'delete', nodeIndex: op.nodeIndex, keepInputPosition: op.keepInputPosition }
-        : { type: 'insertPassthrough', targetNodeIndex: op.targetNodeIndex, inputPosition: op.inputPosition, newNodeName: op.newNodeId },
+        : op.type === 'insertPassthrough'
+          ? { type: 'insertPassthrough', targetNodeIndex: op.targetNodeIndex, inputPosition: op.inputPosition, newNodeName: op.newNodeId }
+          : { type: 'rewire', targetNodeIndex: op.targetNodeIndex, inputPosition: op.inputPosition, sourceNodeIndex: op.sourceNodeIndex },
     )
     exportModifiedModel(overridesByIndex, writerOps).then((buf) => {
       const blob = new Blob([buf], { type: 'application/octet-stream' })
@@ -655,6 +693,7 @@ function App() {
                 onNodeSelect={handleNodeSelect}
                 onNodeCtrlClick={handleNodeCtrlClick}
                 onEdgeClick={isReadOnly ? undefined : handleEdgeClick}
+                onRewire={isReadOnly ? undefined : handleRewire}
                 jumpToNodeId={jumpToNodeId}
                 traceAncestors={ancestors}
                 traceDescendants={descendants}
@@ -679,7 +718,7 @@ function App() {
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               />
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} />
+                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} />
               </div>
             </div>
           </div>
