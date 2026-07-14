@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -13,6 +13,7 @@ import {
   type Node,
   type Edge,
   type NodeProps,
+  type ReactFlowInstance,
 } from '@xyflow/react'
 import dagre from 'dagre'
 import '@xyflow/react/dist/style.css'
@@ -31,14 +32,28 @@ function traceAccent(role: TraceRole): string | null {
   return null
 }
 
-function applyDagreLayout(nodes: Node[], edges: Edge[], layoutDir: 'TB' | 'LR' = 'TB'): Node[] {
+// manualPositions holds nodes the user placed by hand (addCustomNode) -- they're
+// excluded from dagre's graph entirely (not registered as a node, and any edge
+// touching one is skipped) so auto-layout for the rest of the graph proceeds
+// exactly as if the manually-placed node didn't exist, and the node itself keeps
+// the position it was dropped at instead of being reshuffled on every re-layout.
+// React Flow still draws edges to/from it correctly regardless, since edge
+// rendering only depends on each node's final resolved position.
+function applyDagreLayout(
+  nodes: Node[],
+  edges: Edge[],
+  layoutDir: 'TB' | 'LR' = 'TB',
+  manualPositions: Map<string, { x: number; y: number }>,
+): Node[] {
   const g = new dagre.graphlib.Graph()
   g.setGraph({ rankdir: layoutDir ?? 'TB', ranksep: 48, nodesep: 24 })
   g.setDefaultEdgeLabel(() => ({}))
-  nodes.forEach((n) => g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT }))
-  edges.forEach((e) => g.setEdge(e.source, e.target))
+  nodes.forEach((n) => { if (!manualPositions.has(n.id)) g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT }) })
+  edges.forEach((e) => { if (!manualPositions.has(e.source) && !manualPositions.has(e.target)) g.setEdge(e.source, e.target) })
   dagre.layout(g)
   return nodes.map((n) => {
+    const manual = manualPositions.get(n.id)
+    if (manual) return { ...n, position: manual }
     const pos = g.node(n.id)
     return { ...n, position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 } }
   })
@@ -197,6 +212,8 @@ interface GraphCanvasProps {
   onNodeCtrlClick?: (nodeId: string) => void
   onEdgeClick?: (targetNodeId: string, tensorName: string) => void
   onRewire?: (sourceNodeId: string, targetNodeId: string, inputPosition: number) => void
+  pendingNodeType?: { opType: string; inputCount: number } | null
+  onPlaceNode?: (position: { x: number; y: number }) => void
   jumpToNodeId?: string | null
   traceAncestors?: Set<string>
   traceDescendants?: Set<string>
@@ -262,7 +279,12 @@ function toFlowGraph(
       }
     })
 
-  return { nodes: applyDagreLayout(rawNodes, edges, layoutDir), edges }
+  const manualPositions = new Map<string, { x: number; y: number }>()
+  for (const n of onnxNodes) {
+    if (n.position) manualPositions.set(n.id, n.position)
+  }
+
+  return { nodes: applyDagreLayout(rawNodes, edges, layoutDir, manualPositions), edges }
 }
 
 function JumpController({ jumpToNodeId }: { jumpToNodeId?: string | null }) {
@@ -276,7 +298,7 @@ function JumpController({ jumpToNodeId }: { jumpToNodeId?: string | null }) {
 
 const EMPTY_TRACE: Set<string> = new Set()
 
-export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, onEdgeClick, onRewire, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE, layoutDir = 'TB' }: GraphCanvasProps) {
+export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, onEdgeClick, onRewire, pendingNodeType, onPlaceNode, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE, layoutDir = 'TB' }: GraphCanvasProps) {
   const computed = useMemo(
     () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir),
     [onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir],
@@ -286,6 +308,12 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
   const [edges, setEdges, onEdgesChange] = useEdgesState(computed.edges)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null)
+  // ReactFlowInstance.screenToFlowPosition is only reachable via useReactFlow(),
+  // which requires being a descendant of <ReactFlow>'s own provider (see
+  // JumpController above) -- GraphCanvas itself is the ancestor that renders
+  // <ReactFlow>, so onInit's instance callback is the way to reach it from here.
+  const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null)
 
   useEffect(() => {
     setNodes(computed.nodes)
@@ -295,13 +323,18 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
   const hoveredNode = hoveredNodeId ? onnxNodes.find((n) => n.id === hoveredNodeId) : null
 
   return (
-    <div style={{ width: '100%', height: '100%' }} data-testid="graph-canvas">
+    <div
+      style={{ width: '100%', height: '100%', cursor: pendingNodeType ? 'crosshair' : undefined }}
+      data-testid="graph-canvas"
+      onMouseMove={pendingNodeType ? (event) => setCursorPos({ x: event.clientX, y: event.clientY }) : undefined}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
+        onInit={(instance) => { reactFlowInstanceRef.current = instance }}
         onNodeClick={(event, node) => {
           if (event.ctrlKey || event.metaKey) {
             onNodeCtrlClick?.(node.id)
@@ -320,6 +353,12 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
           const match = connection.targetHandle ? /^in-(\d+)$/.exec(connection.targetHandle) : null
           if (!match || !connection.source || !connection.target) return
           onRewire?.(connection.source, connection.target, Number(match[1]))
+        }}
+        onPaneClick={(event) => {
+          if (!pendingNodeType) return
+          const flowPos = reactFlowInstanceRef.current?.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+          if (!flowPos) return
+          onPlaceNode?.({ x: flowPos.x - NODE_WIDTH / 2, y: flowPos.y - NODE_HEIGHT / 2 })
         }}
         connectionLineStyle={{ stroke: '#FFB000', strokeWidth: 1 }}
         onNodeMouseEnter={(event, node) => {
@@ -358,6 +397,37 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
         />
         <JumpController jumpToNodeId={jumpToNodeId} />
       </ReactFlow>
+      {pendingNodeType && cursorPos && (
+        <div
+          data-testid="add-node-ghost"
+          style={{
+            position: 'fixed',
+            left: cursorPos.x - NODE_WIDTH / 2,
+            top: cursorPos.y - NODE_HEIGHT / 2,
+            width: NODE_WIDTH,
+            minHeight: NODE_HEIGHT,
+            background: '#16191C',
+            border: '1px dashed rgba(255,176,0,0.6)',
+            borderRadius: 2,
+            padding: '8px 12px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            gap: 2,
+            opacity: 0.6,
+            pointerEvents: 'none',
+            zIndex: 9999,
+            fontFamily: 'var(--font-mono)',
+          }}
+        >
+          <div style={{ color: '#FFB000', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em' }}>
+            {pendingNodeType.opType}
+          </div>
+          <div style={{ color: 'var(--text-dim)', fontSize: 9, letterSpacing: '0.06em' }}>
+            CLICK TO PLACE
+          </div>
+        </div>
+      )}
       {hoveredNode && tooltipPos && (
         <div
           style={{

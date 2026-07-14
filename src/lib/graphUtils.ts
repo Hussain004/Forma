@@ -328,6 +328,7 @@ export function addCustomNode(
   newNodeId: string,
   opType: string,
   inputCount: number,
+  position: { x: number; y: number },
 ): SelectableGraph {
   const inputs = Array.from({ length: inputCount }, (_, i) => `__unwired_${newNodeId}_in${i}`)
   const newNode: SelectableNode = {
@@ -339,6 +340,7 @@ export function addCustomNode(
     paramCount: 0,
     estimatedSizeMB: 0,
     selected: false,
+    position,
   }
   return { ...graph, nodes: [...graph.nodes, newNode] }
 }
