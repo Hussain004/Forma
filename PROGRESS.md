@@ -23,7 +23,7 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 - [x] P2 Placement-mode polish
 - [x] P2 MiniMap category colors and node-count grammar (model-name flex-width deferred to the stats bar responsive collapse item, where the bar's overflow behavior gets rebuilt properly)
 - [x] P2 One-prop render culling for big graphs (gated on `onnxNodes.length > 300`, not always-on -- jsdom reports zero-size bounding rects in tests, which would cull every node in every small fixture if this ran unconditionally)
-- [ ] P2 Consolidate the styling system
+- [x] P2 Consolidate the styling system
 - [x] P2 Free-text Add Node input count
 
 ## Medium Effort
@@ -50,6 +50,8 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 ## Log
 
 (most recent first)
+
+- Merged the two overlapping `.react-flow__controls` CSS blocks (index.css's was silently dead -- theme.css's `!important` version always won the cascade, and was also the only one with the hover-to-amber and last-child rules) into a single token-based block in theme.css, and deleted the now-redundant inline `style` prop on `<Controls>` that duplicated it. Swept hardcoded hex colors that duplicate existing tokens (#FFB000, #16191C, #1C2128, #12161A, #E8EAF0, #8A8F9E) across GraphCanvas.tsx, App.tsx, LayerInspector.tsx, and ModelDropzone.tsx onto `var(--color-amber)` / `var(--bg-*)` / `var(--text-*)`. Deliberately left three spots alone since they're their own semantic tier scales that happen to reuse the same hex values, not simple token substitutions: `sensitivityColor()`, `CATEGORY_LEGEND`, and `traceAccent()` -- coupling those to the general-purpose tokens would mean an unrelated token change silently reshuffles those scales. Verified live with no broken `var()` resolution.
 
 - Vendored the JetBrains Mono latin subset (weights 300/400/500/700) into public/fonts/ and replaced the Google Fonts @import with local @font-face rules. Sourced the files from the @fontsource/jetbrains-mono npm package (proper licensing, no manual font wrangling), then uninstalled the package itself since only the static files were needed. Verified live: zero external hosts contacted on load (previously fonts.googleapis.com and fonts.gstatic.com), which makes the "your model never leaves the browser" pitch literally true.
 

@@ -65,30 +65,35 @@
   --radius: 2px;
 }
 
-/* React Flow Controls: override default white theme */
+/* React Flow Controls: override default white theme. The single source of
+   truth for this -- index.css used to carry a second, overlapping block for
+   the same selectors; that one only won the cascade by accident of import
+   order and was missing the hover-to-amber and last-child rules below, so it
+   was quietly dead weight. Consolidated here since this file already owns
+   the design tokens these rules consume. */
 .react-flow__controls {
-  background: #16191C !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  border-radius: 2px !important;
-  box-shadow: none !important;
+  background: var(--bg-surface);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius);
+  box-shadow: none;
 }
 
 .react-flow__controls-button {
-  background: #16191C !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
-  color: #8A8F9E !important;
-  fill: #8A8F9E !important;
+  background: var(--bg-surface);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  fill: var(--text-secondary);
 }
 
 .react-flow__controls-button:hover {
-  background: #1C2128 !important;
-  fill: #FFB000 !important;
+  background: var(--bg-raised);
+  fill: var(--color-amber);
 }
 
 .react-flow__controls-button:last-child {
-  border-bottom: none !important;
+  border-bottom: none;
 }
 
 .react-flow__controls-button svg {
-  fill: inherit !important;
+  fill: inherit;
 }

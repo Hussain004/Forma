@@ -140,7 +140,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
       <div
         style={{
           background: 'var(--bg-surface)',
-          borderLeft: '2px solid #FFB000',
+          borderLeft: '2px solid var(--color-amber)',
           padding: 16,
           height: '100%',
           minWidth: 260,
@@ -148,7 +148,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           boxSizing: 'border-box',
         }}
       >
-        <div style={{ color: '#FFB000', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: '0.08em', marginBottom: 12, textTransform: 'uppercase' }}>
+        <div style={{ color: 'var(--color-amber)', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: '0.08em', marginBottom: 12, textTransform: 'uppercase' }}>
           {multiSelection.nodes.length} Nodes Selected
         </div>
         <div style={rowStyle}>
@@ -323,7 +323,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
     <div
       style={{
         background: 'var(--bg-surface)',
-        borderLeft: '2px solid #FFB000',
+        borderLeft: '2px solid var(--color-amber)',
         padding: 16,
         height: '100%',
         minWidth: 260,
@@ -336,7 +336,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           <span style={{
             fontSize: 9,
             letterSpacing: '0.08em',
-            color: '#FFB000',
+            color: 'var(--color-amber)',
             background: 'rgba(255,176,0,0.12)',
             padding: '2px 6px',
             borderRadius: 1,
@@ -378,8 +378,8 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           <button
             onClick={() => node && onToggleExclude?.(node.id)}
             style={{
-              border: node.excluded ? '1px solid #FFB000' : '1px solid rgba(255,255,255,0.15)',
-              color: node.excluded ? '#FFB000' : 'var(--text-dim)',
+              border: node.excluded ? '1px solid var(--color-amber)' : '1px solid rgba(255,255,255,0.15)',
+              color: node.excluded ? 'var(--color-amber)' : 'var(--text-dim)',
               fontSize: 10,
               padding: '2px 10px',
             }}
@@ -452,7 +452,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
             const original = v as string | number
             const isEditing = editingAttr === k
             const isHovered = hoveredAttr === k
-            const pencilColor = isHovered ? '#FFB000' : 'var(--text-dim)'
+            const pencilColor = isHovered ? 'var(--color-amber)' : 'var(--text-dim)'
             const hoverRowStyle: CSSProperties = {
               ...rowStyle,
               background: isHovered && !isEditing ? 'rgba(255,176,0,0.04)' : 'transparent',

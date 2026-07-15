@@ -87,20 +87,7 @@ button.btn-danger:hover:not(:disabled) {
   outline: none;
 }
 
-/* React Flow control overrides -- match Avionics Blueprint theme */
-.react-flow__controls {
-  box-shadow: none;
-  border: var(--border-default);
-  border-radius: var(--radius);
-}
-.react-flow__controls-button {
-  background: var(--bg-surface);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  fill: var(--text-secondary);
-}
-.react-flow__controls-button:hover {
-  background: var(--bg-raised);
-}
-.react-flow__controls-button svg {
-  fill: var(--text-secondary);
-}
+/* React Flow control overrides live in styles/theme.css -- this file used to
+   carry a second, overlapping block for the same selectors, but theme.css's
+   version (imported above) always won the cascade anyway (it uses
+   !important), so this one was dead weight. */

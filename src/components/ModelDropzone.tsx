@@ -24,7 +24,7 @@ function friendlyErrorHeadline(raw: string | null | undefined): string {
 function Crosshair() {
   return (
     <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
-      <g stroke="#8A8F9E" strokeWidth="1">
+      <g stroke="var(--text-secondary)" strokeWidth="1">
         <line x1="20" y1="0" x2="20" y2="14" />
         <line x1="20" y1="26" x2="20" y2="40" />
         <line x1="0" y1="20" x2="14" y2="20" />
@@ -85,7 +85,7 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
         gap: 16,
         cursor: isBusy ? 'default' : 'pointer',
         background: dragging ? 'rgba(255, 176, 0, 0.05)' : 'var(--bg-base)',
-        border: dragging ? '1px solid #FFB000' : '1px solid transparent',
+        border: dragging ? '1px solid var(--color-amber)' : '1px solid transparent',
         transition: 'background 140ms ease, border-color 140ms ease',
         userSelect: 'none',
       }}
@@ -114,7 +114,7 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
             style={{
               width: 240,
               height: 2,
-              background: '#1C2128',
+              background: 'var(--bg-raised)',
               borderRadius: 2,
               overflow: 'hidden',
             }}
@@ -123,7 +123,7 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
               style={{
                 height: '100%',
                 width: `${progressPercent ?? 0}%`,
-                background: '#FFB000',
+                background: 'var(--color-amber)',
                 borderRadius: 2,
                 transition: 'width 0.3s ease',
               }}

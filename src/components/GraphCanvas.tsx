@@ -63,7 +63,7 @@ const handleStyle = {
   width: 6,
   height: 6,
   borderRadius: 0,
-  background: '#FFB000',
+  background: 'var(--color-amber)',
   border: 'none',
 }
 
@@ -93,14 +93,14 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
     : '1px solid rgba(255,255,255,0.12)'
   const accent = data.excluded
     ? 'rgba(255,255,255,0.08)'
-    : traceAccent(data.traceRole) ?? (selected ? '#FFB000' : opCategoryColor(data.opType))
+    : traceAccent(data.traceRole) ?? (selected ? 'var(--color-amber)' : opCategoryColor(data.opType))
   return (
     <div
       style={{
         position: 'relative',
         width: NODE_WIDTH,
         minHeight: NODE_HEIGHT,
-        background: '#16191C',
+        background: 'var(--bg-surface)',
         border,
         borderRadius: 2,
         padding: '8px 12px',
@@ -115,7 +115,7 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
     >
       <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: accent, borderRadius: '2px 0 0 2px', transition: 'background-color 150ms ease' }} />
       {data.isModified && (
-        <div style={{ position: 'absolute', top: 3, right: 3, fontSize: 9, letterSpacing: '0.08em', color: '#FFB000', background: 'rgba(255,176,0,0.12)', padding: '1px 4px', borderRadius: 1 }}>
+        <div style={{ position: 'absolute', top: 3, right: 3, fontSize: 9, letterSpacing: '0.08em', color: 'var(--color-amber)', background: 'rgba(255,176,0,0.12)', padding: '1px 4px', borderRadius: 1 }}>
           MOD
         </div>
       )}
@@ -137,10 +137,10 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
           style={{ ...handleStyle, left: `${((i + 1) / (Math.max(data.inputCount, 1) + 1)) * 100}%` }}
         />
       ))}
-      <div style={{ color: '#E8EAF0', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {data.opType}
       </div>
-      <div style={{ color: '#8A8F9E', fontSize: 10, letterSpacing: '0.06em' }}>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 10, letterSpacing: '0.06em' }}>
         {data.paramCount > 0 ? data.paramCount.toLocaleString() + ' PARAMS' : 'NO PARAMS'}
       </div>
       {data.shapeLabel && (
@@ -163,17 +163,17 @@ function IONode({ data, selected }: NodeProps<Node<IOData>>) {
         : 1
   const ioAccent = data.excluded
     ? 'rgba(255,255,255,0.08)'
-    : traceAccent(data.traceRole) ?? '#FFB000'
+    : traceAccent(data.traceRole) ?? 'var(--color-amber)'
   return (
     <div
       style={{
         position: 'relative',
         width: NODE_WIDTH,
         minHeight: NODE_HEIGHT,
-        background: '#1C2128',
+        background: 'var(--bg-raised)',
         border: data.excluded
           ? '1px solid rgba(255,255,255,0.08)'
-          : selected ? '1px solid #FFB000' : '1px solid rgba(255,255,255,0.15)',
+          : selected ? '1px solid var(--color-amber)' : '1px solid rgba(255,255,255,0.15)',
         borderLeft: data.excluded ? '1px solid rgba(255,255,255,0.08)' : `2px solid ${ioAccent}`,
         borderRadius: 2,
         padding: '8px 12px',
@@ -188,7 +188,7 @@ function IONode({ data, selected }: NodeProps<Node<IOData>>) {
     >
       {data.excluded && <div style={strikeStyle} />}
       <Handle type="target" position={Position.Top} style={handleStyle} />
-      <div style={{ color: '#E8EAF0', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {data.label}
       </div>
       {data.shapeLabel && (
@@ -273,9 +273,9 @@ function toFlowGraph(
         targetHandle: inputPosition >= 0 ? `in-${inputPosition}` : undefined,
         label: shapeLabel,
         labelStyle: { fontSize: 10, fontFamily: 'JetBrains Mono, monospace', fill: 'var(--text-dim)' },
-        labelBgStyle: { fill: '#12161A', fillOpacity: 0.85 },
+        labelBgStyle: { fill: 'var(--bg-base)', fillOpacity: 0.85 },
         labelBgPadding: [3, 4] as [number, number],
-        style: { stroke: '#FFB000', strokeWidth: 1, cursor: 'pointer' },
+        style: { stroke: 'var(--color-amber)', strokeWidth: 1, cursor: 'pointer' },
       }
     })
 
@@ -365,7 +365,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
           if (!flowPos) return
           onPlaceNode?.({ x: flowPos.x - NODE_WIDTH / 2, y: flowPos.y - NODE_HEIGHT / 2 })
         }}
-        connectionLineStyle={{ stroke: '#FFB000', strokeWidth: 1 }}
+        connectionLineStyle={{ stroke: 'var(--color-amber)', strokeWidth: 1 }}
         onNodeMouseEnter={(event, node) => {
           setHoveredNodeId(node.id)
           setTooltipPos({ x: event.clientX, y: event.clientY })
@@ -385,20 +385,12 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
         onlyRenderVisibleElements={onnxNodes.length > 300}
       >
         <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#2A2F38" />
-        <Controls
-          showInteractive={false}
-          style={{
-            background: '#16191C',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 2,
-            boxShadow: 'none',
-          }}
-        />
+        <Controls showInteractive={false} />
         <MiniMap
-          nodeColor={(node) => (node.type === 'operator' ? opCategoryColor((node.data as OperatorData).opType) : '#FFB000')}
+          nodeColor={(node) => (node.type === 'operator' ? opCategoryColor((node.data as OperatorData).opType) : 'var(--color-amber)')}
           maskColor="rgba(18,22,26,0.8)"
           style={{
-            background: '#12161A',
+            background: 'var(--bg-base)',
             border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: 2,
           }}
@@ -418,7 +410,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             minHeight: NODE_HEIGHT,
             transform: `scale(${zoom})`,
             transformOrigin: 'center center',
-            background: '#16191C',
+            background: 'var(--bg-surface)',
             border: '1px dashed rgba(255,176,0,0.6)',
             borderRadius: 2,
             padding: '8px 12px',
@@ -432,7 +424,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             fontFamily: 'var(--font-mono)',
           }}
         >
-          <div style={{ color: '#FFB000', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em' }}>
+          <div style={{ color: 'var(--color-amber)', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em' }}>
             {pendingNodeType.opType}
           </div>
           <div style={{ color: 'var(--text-dim)', fontSize: 9, letterSpacing: '0.06em' }}>
@@ -446,7 +438,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             position: 'fixed',
             left: tooltipPos.x + 16,
             top: tooltipPos.y + 8,
-            background: '#1C2128',
+            background: 'var(--bg-raised)',
             border: '1px solid rgba(255,255,255,0.15)',
             borderRadius: 2,
             padding: '8px 12px',
@@ -459,7 +451,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             letterSpacing: '0.04em',
           }}
         >
-          <div style={{ color: '#FFB000', marginBottom: 2 }}>{hoveredNode.opType}</div>
+          <div style={{ color: 'var(--color-amber)', marginBottom: 2 }}>{hoveredNode.opType}</div>
           {hoveredNode.name && (
             <div style={{ color: 'var(--text-dim)', fontSize: 9, letterSpacing: '0.04em', marginBottom: 4, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {hoveredNode.name}
