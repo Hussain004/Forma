@@ -18,6 +18,8 @@ public/ort-wasm-simd-threaded.*
 # Internal development docs (for assistant use only)
 FORMA_IMPLEMENTATION.md
 DEVELOPMENT.md
+IMPROVEMENTS.md
+PROGRESS.md
 
 # Local test models (not committed)
 test_files/
