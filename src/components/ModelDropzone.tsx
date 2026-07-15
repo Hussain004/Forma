@@ -8,10 +8,23 @@ interface ModelDropzoneProps {
   progressPercent?: number | null
 }
 
+// onnxruntime and our own parsers surface technical, ALL-CAPS-hostile error
+// strings ("CAN'T CREATE A SESSION. ERROR_CODE: 7, ERROR_MESSAGE: FAILED TO
+// LOAD MODEL BECAUSE PROTOBUF PARSING FAILED."). Map the common shapes to a
+// short, human headline; the raw message stays visible underneath for anyone
+// who wants the detail (or needs it to file a bug).
+function friendlyErrorHeadline(raw: string | null | undefined): string {
+  const lower = (raw ?? '').toLowerCase()
+  if (lower.includes('protobuf parsing failed') || lower.includes("can't create a session") || lower.includes('failed to load model')) {
+    return "This file doesn't look like a valid ONNX or TFLite model."
+  }
+  return 'Something went wrong while loading this model.'
+}
+
 function Crosshair() {
   return (
     <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
-      <g stroke="#8A8F9E" strokeWidth="1">
+      <g stroke="var(--text-secondary)" strokeWidth="1">
         <line x1="20" y1="0" x2="20" y2="14" />
         <line x1="20" y1="26" x2="20" y2="40" />
         <line x1="0" y1="20" x2="14" y2="20" />
@@ -47,6 +60,17 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
     if (file) readFile(file)
   }
 
+  // Loads the small bundled demo graph (see public/sample-model.onnx) so a
+  // first-time visitor with no .onnx file handy can still see the product
+  // work, instead of bouncing off an empty drop target. stopPropagation
+  // keeps this from also triggering the container's click-to-browse handler.
+  const handleLoadSample = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    fetch('/sample-model.onnx')
+      .then((r) => r.arrayBuffer())
+      .then((buf) => onModelLoaded(buf, 'sample-model.onnx'))
+  }
+
   const isBusy = status === 'loading'
 
   return (
@@ -72,7 +96,7 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
         gap: 16,
         cursor: isBusy ? 'default' : 'pointer',
         background: dragging ? 'rgba(255, 176, 0, 0.05)' : 'var(--bg-base)',
-        border: dragging ? '1px solid #FFB000' : '1px solid transparent',
+        border: dragging ? '1px solid var(--color-amber)' : '1px solid transparent',
         transition: 'background 140ms ease, border-color 140ms ease',
         userSelect: 'none',
       }}
@@ -101,16 +125,17 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
             style={{
               width: 240,
               height: 2,
-              background: '#1C2128',
+              background: 'var(--bg-raised)',
               borderRadius: 2,
               overflow: 'hidden',
             }}
           >
             <div
+              className="loading-fill-shimmer"
               style={{
                 height: '100%',
                 width: `${progressPercent ?? 0}%`,
-                background: '#FFB000',
+                backgroundColor: 'var(--color-amber)',
                 borderRadius: 2,
                 transition: 'width 0.3s ease',
               }}
@@ -132,8 +157,21 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
               maxWidth: 360,
             }}
           >
-            {error ?? 'Failed to parse model'}
+            {friendlyErrorHeadline(error)}
           </span>
+          {error && (
+            <span
+              style={{
+                color: 'var(--text-dim)',
+                letterSpacing: '0.02em',
+                fontSize: 11,
+                textAlign: 'center',
+                maxWidth: 420,
+              }}
+            >
+              {error}
+            </span>
+          )}
           <span
             style={{
               color: 'var(--text-dim)',
@@ -149,6 +187,22 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
 
       {(status === 'idle' || status === 'ready') && (
         <>
+          <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: '0.04em', color: 'var(--text-primary)' }}>
+            FOR<span style={{ color: 'var(--color-amber)' }}>M</span>A
+          </span>
+          <span
+            style={{
+              color: 'var(--text-secondary)',
+              fontSize: 13,
+              letterSpacing: '0.02em',
+              textAlign: 'center',
+              maxWidth: 420,
+              marginTop: -8,
+            }}
+          >
+            Visualize, edit, and re-export ONNX and TFLite models. Runs entirely in your browser --
+            your model never leaves this device.
+          </span>
           <Crosshair />
           <span
             style={{
@@ -160,6 +214,26 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
           >
             Drop .onnx or .tflite model
           </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 8 }}>
+            <button onClick={handleLoadSample} className="btn-bar btn-ghost">
+              Load sample model
+            </button>
+            <a
+              href="https://github.com/Hussain004/Forma"
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                color: 'var(--text-dim)',
+                fontSize: 12,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                textDecoration: 'none',
+              }}
+            >
+              View on GitHub
+            </a>
+          </div>
         </>
       )}
     </div>

@@ -1,4 +1,36 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap');
+/* Self-hosted (latin subset only, weights 300/400/500/700 -- matches what
+   was previously requested from Google Fonts). Vendored from
+   @fontsource/jetbrains-mono so the app makes zero external network
+   requests, which matters for a tool whose pitch is "your model never
+   leaves the browser". */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin-300-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin-500-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin-700-normal.woff2') format('woff2');
+}
 
 :root {
   --font-mono: 'JetBrains Mono', 'Space Mono', 'Fira Code', monospace;
@@ -17,7 +49,10 @@
 
   --text-primary: #E8EAF0;
   --text-secondary: #8A8F9E;
-  --text-dim: #4A4F5E;
+  /* 4.5:1+ against bg-base/bg-surface (WCAG AA for normal text) -- the previous
+     #4A4F5E measured ~2.2:1 and was used for real content (section headers,
+     hints, badges), not just decoration. */
+  --text-dim: #7A8191;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -30,30 +65,35 @@
   --radius: 2px;
 }
 
-/* React Flow Controls: override default white theme */
+/* React Flow Controls: override default white theme. The single source of
+   truth for this -- index.css used to carry a second, overlapping block for
+   the same selectors; that one only won the cascade by accident of import
+   order and was missing the hover-to-amber and last-child rules below, so it
+   was quietly dead weight. Consolidated here since this file already owns
+   the design tokens these rules consume. */
 .react-flow__controls {
-  background: #16191C !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  border-radius: 2px !important;
-  box-shadow: none !important;
+  background: var(--bg-surface);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius);
+  box-shadow: none;
 }
 
 .react-flow__controls-button {
-  background: #16191C !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
-  color: #8A8F9E !important;
-  fill: #8A8F9E !important;
+  background: var(--bg-surface);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  fill: var(--text-secondary);
 }
 
 .react-flow__controls-button:hover {
-  background: #1C2128 !important;
-  fill: #FFB000 !important;
+  background: var(--bg-raised);
+  fill: var(--color-amber);
 }
 
 .react-flow__controls-button:last-child {
-  border-bottom: none !important;
+  border-bottom: none;
 }
 
 .react-flow__controls-button svg {
-  fill: inherit !important;
+  fill: inherit;
 }

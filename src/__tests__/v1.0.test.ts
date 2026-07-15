@@ -94,6 +94,17 @@ describe('LayerInspector attribute editing (v1.0)', () => {
     expect((input as HTMLInputElement).value).toBe('1')
   })
 
+  it('is a real button reachable by keyboard, and Enter opens the input the same as a click', () => {
+    render(createElement(LayerInspector, { node: baseNode }))
+    const valueButton = screen.getByTestId('attr-value-group')
+    expect(valueButton.tagName).toBe('BUTTON')
+    valueButton.focus()
+    expect(valueButton).toHaveFocus()
+    fireEvent.keyDown(valueButton, { key: 'Enter' })
+    const input = screen.getByTestId('attr-input-group')
+    expect((input as HTMLInputElement).value).toBe('1')
+  })
+
   it('blurring the input calls onAttrEdit with parsed value', () => {
     const onAttrEdit = vi.fn()
     render(createElement(LayerInspector, { node: baseNode, onAttrEdit }))

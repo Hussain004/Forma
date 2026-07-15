@@ -87,20 +87,135 @@ button.btn-danger:hover:not(:disabled) {
   outline: none;
 }
 
-/* React Flow control overrides -- match Avionics Blueprint theme */
-.react-flow__controls {
-  box-shadow: none;
-  border: var(--border-default);
-  border-radius: var(--radius);
+/* Attribute values were a clickable div -- editable by mouse only, invisible
+   to a keyboard user and to screen readers as an interactive control. `all:
+   unset` strips the global button reset's uppercase/border/padding (wrong
+   for arbitrary attribute values) before re-adding just the layout this
+   needs. */
+button.attr-value-button {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  cursor: text;
+  box-sizing: border-box;
 }
-.react-flow__controls-button {
-  background: var(--bg-surface);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  fill: var(--text-secondary);
+button.attr-value-button:focus-visible {
+  outline: 1px solid var(--color-amber);
+  outline-offset: 1px;
+  border-radius: 1px;
 }
-.react-flow__controls-button:hover {
-  background: var(--bg-raised);
+
+/* React Flow control overrides live in styles/theme.css -- this file used to
+   carry a second, overlapping block for the same selectors, but theme.css's
+   version (imported above) always won the cascade anyway (it uses
+   !important), so this one was dead weight. */
+
+/* Nodes are keyboard-focusable (react-flow gives them tabIndex/arrow-key
+   movement out of the box) but had no visible focus state at all -- a
+   keyboard user tabbing through the canvas couldn't tell where they were.
+   react-flow's own stylesheet ships `.react-flow__node.selectable:focus-
+   visible { outline: none }`, a more specific selector than a bare
+   `.react-flow__node:focus-visible` -- !important guarantees this wins
+   regardless of stylesheet load order. */
+.react-flow__node:focus-visible {
+  outline: 1px solid var(--color-amber) !important;
+  outline-offset: 2px !important;
 }
-.react-flow__controls-button svg {
-  fill: var(--text-secondary);
+
+/* ---- Motion ----
+   Structural edits (delete/insert/rewire/layout toggle) used to teleport:
+   deleting a node made it vanish and every surviving node snapped straight
+   to its new dagre position in one frame, with nothing to look at that
+   explained what changed. All of this is deliberately CSS-only rather than
+   a JS animation library (framer-motion/react-spring): the one thing they're
+   better at, exit animations for removed elements, isn't needed here --
+   the glide rule below makes a deletion legible by itself, since watching
+   the neighbors close the gap *is* the "something was removed" cue. */
+@media (prefers-reduced-motion: no-preference) {
+  /* Re-layout glide: react-flow sets each node's position via an inline
+     transform on this element and re-renders it on every layout pass; a
+     transition here smoothly interpolates between old and new positions
+     instead of snapping, for delete/insert/rewire/layout-toggle alike. */
+  .react-flow__node {
+    transition: transform 180ms cubic-bezier(0.2, 0, 0, 1);
+    animation: node-enter 160ms ease-out;
+  }
+  /* An active manual drag re-renders transform many times a second; a 180ms
+     transition on top of that makes the node visibly lag the cursor. */
+  .react-flow__node.dragging {
+    transition: none;
+  }
+  @keyframes node-enter {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* Drag-to-rewire feedback: the temporary line follows the cursor while
+     connecting, and a valid drop target's handle gets an amber pulse. */
+  .react-flow__connection-path {
+    stroke-dasharray: 4 3;
+    animation: connection-march 400ms linear infinite;
+  }
+  @keyframes connection-march {
+    to { stroke-dashoffset: -14; }
+  }
+  .react-flow__handle.connectingto.valid {
+    animation: handle-pulse 700ms ease-in-out infinite;
+  }
+  @keyframes handle-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 176, 0, 0.55); }
+    50% { box-shadow: 0 0 0 4px rgba(255, 176, 0, 0); }
+  }
+
+  /* Loading progress fill: a sweep on top of the amber fill so a slow parse
+     reads as active work rather than a stalled bar. backgroundColor (not the
+     background shorthand) is set inline on this element specifically so it
+     doesn't reset the backgroundImage this class supplies. */
+  .loading-fill-shimmer {
+    background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+    background-size: 60px 100%;
+    background-repeat: no-repeat;
+    animation: loading-shimmer 1.1s ease-in-out infinite;
+  }
+  @keyframes loading-shimmer {
+    from { background-position: -60px 0; }
+    to { background-position: 100% 0; }
+  }
+}
+
+/* ---- StatsBar responsive collapse ----
+   A container query (not a window-width media query) so this responds to the
+   bar's own rendered width, which isn't the same as the viewport -- the
+   resizable inspector panel eats into it. At 1024px viewport width the bar
+   used to crop the model name off the left edge and Export Modified/Load new
+   off the right, with no wrap or scroll: verified live in the original audit. */
+.stats-bar {
+  container-type: inline-size;
+  container-name: statsbar;
+}
+.statsbar-collapsed-actions {
+  display: none;
+}
+.stat-compact {
+  display: none;
+}
+@container statsbar (max-width: 1280px) {
+  .stat-full {
+    display: none;
+  }
+  .stat-compact {
+    display: inline;
+  }
+}
+@container statsbar (max-width: 1100px) {
+  .statsbar-full-actions {
+    display: none !important;
+  }
+  .statsbar-collapsed-actions {
+    display: block;
+  }
 }

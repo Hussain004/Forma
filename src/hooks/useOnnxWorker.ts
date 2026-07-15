@@ -6,6 +6,7 @@ type Status = 'idle' | 'loading' | 'ready' | 'running' | 'benchmarking' | 'expor
 
 export interface BenchmarkResult {
   avgMs: number
+  medianMs: number
   minMs: number
   maxMs: number
   runs: number
@@ -23,7 +24,7 @@ type WorkerResponse =
   | { type: 'BENCHMARK_RESULT'; payload: BenchmarkResult }
   | { type: 'QUANTIZE_ESTIMATE'; payload: QuantizeEstimate }
   | { type: 'EXPORT_RESULT'; payload: ArrayBuffer }
-  | { type: 'ERROR'; payload: string }
+  | { type: 'ERROR'; payload: string; scope: 'load' | 'operation' }
   | { type: 'PROGRESS'; payload: { stage: string; percent: number } }
 
 export function useOnnxWorker() {
@@ -31,6 +32,13 @@ export function useOnnxWorker() {
   const [graph, setGraph] = useState<OnnxGraph | null>(null)
   const [status, setStatus] = useState<Status>('idle')
   const [error, setError] = useState<string | null>(null)
+  // A failed benchmark/inference/export shouldn't tear down an already-loaded
+  // graph the way a failed initial load should -- this is the surface for
+  // those, kept distinct from `error` (the full-screen load-failure state).
+  // `at` forces a distinct object on every event (not just every distinct
+  // message) so retrying the exact same failure twice in a row still
+  // re-triggers whatever effect is watching this value.
+  const [operationError, setOperationError] = useState<{ message: string; at: number } | null>(null)
   const [progress, setProgress] = useState<{ stage: string; percent: number } | null>(null)
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null)
   const [quantizeEstimate, setQuantizeEstimate] = useState<QuantizeEstimate | null>(null)
@@ -79,8 +87,13 @@ export function useOnnxWorker() {
           exportResolve.current = null
           exportReject.current = null
         }
-        setError(msg.payload)
-        setStatus('error')
+        if (msg.scope === 'load') {
+          setError(msg.payload)
+          setStatus('error')
+        } else {
+          setOperationError({ message: msg.payload, at: Date.now() })
+          setStatus('ready')
+        }
         inferenceRejecterRef.current?.(new Error(msg.payload))
         benchmarkRejecterRef.current?.(new Error(msg.payload))
         inferenceResolverRef.current = null
@@ -103,6 +116,7 @@ export function useOnnxWorker() {
     }
     setStatus('loading')
     setError(null)
+    setOperationError(null)
     setGraph(null)
     setBenchmarkResult(null)
     setQuantizeEstimate(null)
@@ -149,5 +163,5 @@ export function useOnnxWorker() {
     })
   }, [])
 
-  return { loadModel, runInference, runBenchmark, exportModel, exportModifiedModel, graph, status, error, progress, benchmarkResult, quantizeEstimate }
+  return { loadModel, runInference, runBenchmark, exportModel, exportModifiedModel, graph, status, error, operationError, progress, benchmarkResult, quantizeEstimate }
 }

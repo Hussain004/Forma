@@ -32,6 +32,80 @@ function formatNumber(n: number): string {
   return String(n)
 }
 
+// Renders both a full ("2.4M PARAMS") and compact ("2.4M") variant as two
+// complete, separate text nodes rather than nesting the unit word inside a
+// conditionally-hidden child span -- the latter reads fine visually but
+// breaks plain-string test queries, since testing-library's default text
+// matcher doesn't concatenate text split across element boundaries.
+function StatValue({ value, unit, title }: { value: string; unit: string; title: string }) {
+  return (
+    <span style={{ flexShrink: 0 }} title={title}>
+      <span className="stat-full">{value} {unit}</span>
+      <span className="stat-compact" aria-hidden="true">{value}</span>
+    </span>
+  )
+}
+
+const SHORTCUTS: [string, string][] = [
+  ['/', 'Focus the node filter'],
+  ['Click', 'Select a node'],
+  ['Ctrl+Click', 'Multi-select nodes'],
+  ['Shift+Drag', 'Box-select multiple nodes'],
+  ['Drag handle to handle', 'Rewire a connection'],
+  ['Delete', 'Delete the selected node(s)'],
+  ['Ctrl+Z', 'Undo the last edit'],
+  ['Esc', 'Cancel / clear selection'],
+  ['?', 'Toggle this panel'],
+]
+
+function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      role="dialog"
+      aria-label="Keyboard shortcuts"
+      data-testid="shortcuts-overlay"
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 2000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(0,0,0,0.5)',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'var(--bg-surface)',
+          borderLeft: '2px solid var(--color-amber)',
+          border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: 2,
+          padding: 20,
+          width: 360,
+          fontFamily: 'var(--font-mono)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ color: 'var(--color-amber)', fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            Keyboard shortcuts
+          </span>
+          <button onClick={onClose} className="btn-ghost" style={{ fontSize: 10, padding: '2px 8px' }}>
+            Close
+          </button>
+        </div>
+        {SHORTCUTS.map(([key, desc]) => (
+          <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <span style={{ color: 'var(--text-primary)', fontSize: 11, letterSpacing: '0.02em' }}>{desc}</span>
+            <span style={{ color: 'var(--text-dim)', fontSize: 11, letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>{key}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 interface StatsBarProps {
   modelName: string
   totalParams: number
@@ -52,6 +126,7 @@ interface StatsBarProps {
   onLayoutToggle: () => void
   onBenchmark: () => void
   benchmarkLabel: string | null
+  isBenchmarking: boolean
   onDownload: () => void
   canDownload: boolean
   onDownloadModified: () => void
@@ -59,21 +134,25 @@ interface StatsBarProps {
   onReset: () => void
   isReadOnly: boolean
   onAddNode: (opType: string, inputCount: number) => void
+  editCount: number
 }
 
-function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, onDownload, canDownload, onDownloadModified, canDownloadModified, onReset, isReadOnly, onAddNode }: StatsBarProps) {
+function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, isBenchmarking, onDownload, canDownload, onDownloadModified, canDownloadModified, onReset, isReadOnly, onAddNode, editCount }: StatsBarProps) {
   const quantizeLabel = formatQuantizeEstimate(quantizeEstimate)
   const [showAddNode, setShowAddNode] = useState(false)
   const [addNodeQuery, setAddNodeQuery] = useState('')
+  const [addNodeInputCount, setAddNodeInputCount] = useState(1)
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false)
 
   const commitAddNode = (opType: string, inputCount: number) => {
     if (!opType.trim()) return
     onAddNode(opType.trim(), inputCount)
     setShowAddNode(false)
     setAddNodeQuery('')
+    setAddNodeInputCount(1)
   }
   return (
-    <div style={{
+    <div className="stats-bar" style={{
       height: 52,
       background: '#0E1114',
       borderBottom: '1px solid rgba(255,255,255,0.1)',
@@ -87,32 +166,38 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
       flexShrink: 0,
       letterSpacing: '0.06em',
     }}>
-      <span style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ color: 'var(--text-primary)', fontWeight: 500, flex: '1 1 120px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={modelName}>
         {modelName}
       </span>
       {isReadOnly && (
-        <span style={{ fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-dim)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: 2, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+        <span style={{ flexShrink: 0, fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-dim)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: 2, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
           TFLite read-only
         </span>
       )}
-      <span>{formatNumber(totalParams)} PARAMS</span>
-      <span>{totalSizeMB.toFixed(1)} MB</span>
+      <StatValue value={formatNumber(totalParams)} unit="PARAMS" title="Total parameters" />
+      <StatValue value={totalSizeMB.toFixed(1)} unit="MB" title="Estimated size" />
       {quantizeLabel && (
-        <span style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 13, letterSpacing: '0.06em' }}>
+        <span style={{ flexShrink: 0, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 13, letterSpacing: '0.06em' }}>
           {quantizeLabel}
         </span>
       )}
-      <span>{nodeCount} NODES</span>
-      <div style={{ position: 'relative' }}>
+      <StatValue value={String(nodeCount)} unit={nodeCount === 1 ? 'NODE' : 'NODES'} title="Node count" />
+      <div style={{ position: 'relative', flexShrink: 0 }}>
         <input
           ref={filterInputRef}
           type="text"
+          role="combobox"
+          aria-expanded={showDropdown && dropdownResults.length > 0}
+          aria-controls="search-dropdown"
+          aria-autocomplete="list"
+          aria-activedescendant={dropdownIndex >= 0 ? `search-result-${dropdownIndex}` : undefined}
           value={filterQuery}
           onChange={(e) => onFilterChange(e.target.value)}
           onKeyDown={onFilterKeyDown}
           onFocus={onFilterFocus}
           onBlur={onFilterBlur}
-          placeholder="FILTER NODES"
+          placeholder="FILTER NODES  /"
+          title="Focus with / -- press ? for all shortcuts"
           className="input-mono"
           style={{
             background: 'transparent',
@@ -126,12 +211,12 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
           }}
         />
         {showDropdown && dropdownResults.length > 0 && (
-          <div data-testid="search-dropdown" role="listbox" style={{
+          <div id="search-dropdown" data-testid="search-dropdown" role="listbox" style={{
             position: 'absolute',
             top: '100%',
             left: 0,
             width: 320,
-            background: '#1C2128',
+            background: 'var(--bg-raised)',
             border: '1px solid rgba(255,255,255,0.15)',
             borderRadius: 2,
             zIndex: 1000,
@@ -142,6 +227,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
             {dropdownResults.map((node, i) => (
               <div
                 key={node.id}
+                id={`search-result-${i}`}
                 role="option"
                 aria-selected={i === dropdownIndex}
                 data-testid="search-result"
@@ -150,7 +236,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
                   padding: '8px 16px',
                   cursor: 'pointer',
                   background: i === dropdownIndex ? 'rgba(255,176,0,0.12)' : 'transparent',
-                  borderLeft: i === dropdownIndex ? '2px solid #FFB000' : '2px solid transparent',
+                  borderLeft: i === dropdownIndex ? '2px solid var(--color-amber)' : '2px solid transparent',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -169,9 +255,13 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
           </div>
         )}
       </div>
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, paddingLeft: 24, borderLeft: '1px solid rgba(255,255,255,0.08)' }}>
-        <button onClick={onLayoutToggle} className="btn-bar btn-ghost">
-          {layoutDir}
+      <div style={{ marginLeft: 'auto', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, paddingLeft: 24, borderLeft: '1px solid rgba(255,255,255,0.08)' }}>
+        <button
+          onClick={onLayoutToggle}
+          title="Toggle top-to-bottom / left-to-right layout"
+          className="btn-bar btn-ghost"
+        >
+          LAYOUT {layoutDir}
         </button>
         {!isReadOnly && (
           <div style={{ position: 'relative' }}>
@@ -184,7 +274,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
                 top: '100%',
                 right: 0,
                 width: 220,
-                background: '#1C2128',
+                background: 'var(--bg-raised)',
                 border: '1px solid rgba(255,255,255,0.15)',
                 borderRadius: 2,
                 zIndex: 1000,
@@ -200,8 +290,8 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
                     value={addNodeQuery}
                     onChange={(e) => setAddNodeQuery(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') { e.preventDefault(); commitAddNode(addNodeQuery, 1) }
-                      if (e.key === 'Escape') { setShowAddNode(false); setAddNodeQuery('') }
+                      if (e.key === 'Enter') { e.preventDefault(); commitAddNode(addNodeQuery, addNodeInputCount) }
+                      if (e.key === 'Escape') { setShowAddNode(false); setAddNodeQuery(''); setAddNodeInputCount(1) }
                     }}
                     onBlur={() => setTimeout(() => setShowAddNode(false), 150)}
                     placeholder="Op type..."
@@ -218,6 +308,34 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
                       borderRadius: 2,
                     }}
                   />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+                    <span style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Inputs
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button
+                        type="button"
+                        data-testid="add-node-input-count-dec"
+                        onMouseDown={(e) => { e.preventDefault(); setAddNodeInputCount((n) => Math.max(1, n - 1)) }}
+                        className="btn-ghost"
+                        style={{ padding: '0 6px', fontSize: 11, lineHeight: '16px' }}
+                      >
+                        -
+                      </button>
+                      <span data-testid="add-node-input-count" style={{ fontSize: 11, color: 'var(--text-primary)', minWidth: 10, textAlign: 'center' }}>
+                        {addNodeInputCount}
+                      </span>
+                      <button
+                        type="button"
+                        data-testid="add-node-input-count-inc"
+                        onMouseDown={(e) => { e.preventDefault(); setAddNodeInputCount((n) => Math.min(8, n + 1)) }}
+                        className="btn-ghost"
+                        style={{ padding: '0 6px', fontSize: 11, lineHeight: '16px' }}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                   {CURATED_NODE_TYPES.map(({ opType, inputCount }) => (
@@ -236,38 +354,102 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
             )}
           </div>
         )}
-        {!isReadOnly && benchmarkLabel && (
-          <span style={{ color: 'var(--color-green)' }}>{benchmarkLabel}</span>
-        )}
-        {!isReadOnly && (
-          <button onClick={onBenchmark} className="btn-bar">
-            Benchmark
-          </button>
-        )}
-        {canDownload && (
-          <button onClick={onDownload} className="btn-bar">
-            Download
-          </button>
-        )}
         {canDownloadModified && (
           <button
             onClick={onDownloadModified}
-            title="Export the model with your attribute edits applied"
+            title="Export the model with your edits applied"
             className="btn-bar btn-primary"
           >
-            Export Modified
+            Export Modified ({editCount})
           </button>
         )}
-        <button onClick={onReset} className="btn-bar btn-ghost">
-          Load new
-        </button>
+
+        {/* Below ~1100px (container width, accounts for the resizable inspector
+            panel) this group collapses into a single overflow menu -- Export
+            Modified above stays put either way, it's the primary action. */}
+        <div className="statsbar-full-actions" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {!isReadOnly && benchmarkLabel && (
+            <span style={{ color: 'var(--color-green)' }}>{benchmarkLabel}</span>
+          )}
+          {!isReadOnly && (
+            <button onClick={onBenchmark} disabled={isBenchmarking} className="btn-bar">
+              {isBenchmarking ? 'Running' : 'Benchmark'}
+            </button>
+          )}
+          {canDownload && (
+            <button onClick={onDownload} title="Download the unmodified original file" className="btn-bar">
+              Download Original
+            </button>
+          )}
+          <button onClick={onReset} className="btn-bar btn-ghost">
+            Load new
+          </button>
+        </div>
+        <div className="statsbar-collapsed-actions" style={{ position: 'relative' }}>
+          <button
+            onClick={() => setShowOverflowMenu(v => !v)}
+            onBlur={() => setTimeout(() => setShowOverflowMenu(false), 150)}
+            title="More actions"
+            className="btn-bar btn-ghost"
+          >
+            ...
+          </button>
+          {showOverflowMenu && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              right: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'stretch',
+              width: 180,
+              background: 'var(--bg-raised)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 2,
+              zIndex: 1000,
+              marginTop: 4,
+              padding: 4,
+              gap: 2,
+            }}>
+              {!isReadOnly && benchmarkLabel && (
+                <span style={{ color: 'var(--color-green)', fontSize: 10, padding: '4px 8px' }}>{benchmarkLabel}</span>
+              )}
+              {!isReadOnly && (
+                <button
+                  onClick={() => { onBenchmark(); setShowOverflowMenu(false) }}
+                  disabled={isBenchmarking}
+                  className="btn-ghost"
+                  style={{ textAlign: 'left', padding: '6px 8px' }}
+                >
+                  {isBenchmarking ? 'Running' : 'Benchmark'}
+                </button>
+              )}
+              {canDownload && (
+                <button
+                  onClick={() => { onDownload(); setShowOverflowMenu(false) }}
+                  className="btn-ghost"
+                  style={{ textAlign: 'left', padding: '6px 8px' }}
+                >
+                  Download Original
+                </button>
+              )}
+              <button
+                onClick={() => { onReset(); setShowOverflowMenu(false) }}
+                className="btn-ghost"
+                style={{ textAlign: 'left', padding: '6px 8px' }}
+              >
+                Load new
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
 function App() {
-  const { loadModel, runBenchmark, exportModel, exportModifiedModel, graph, status, error, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
+  const { loadModel, runBenchmark, exportModel, exportModifiedModel, graph, status, error, operationError, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
   // TFLite support is read-only: no inference session ever exists for it (no TFLite
   // runtime in this project), so attribute/structural editing, Benchmark, and Export
   // Modified are all withheld for it -- see tfliteParser.ts and onnxWorker.ts.
@@ -287,6 +469,14 @@ function App() {
   const [structuralOps, setStructuralOps] = useState<GraphEdit[]>([])
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [pendingNodeType, setPendingNodeType] = useState<{ opType: string; inputCount: number } | null>(null)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const [announcement, setAnnouncement] = useState<{ text: string; tone: 'reject' | 'info' } | null>(null)
+  const announceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [dragOverlay, setDragOverlay] = useState(false)
+  // dragenter/dragleave fire for every descendant element a drag passes over,
+  // not just the root -- a depth counter is the standard way to tell "left
+  // the root entirely" from "moved between two children of the root".
+  const dragDepthRef = useRef(0)
   const filterInputRef = useRef<HTMLInputElement>(null)
   const undoStackRef = useRef(undoStack)
   undoStackRef.current = undoStack
@@ -299,6 +489,8 @@ function App() {
   const customNodeCounterRef = useRef(0)
   const pendingNodeTypeRef = useRef(pendingNodeType)
   pendingNodeTypeRef.current = pendingNodeType
+  const showShortcutsRef = useRef(showShortcuts)
+  showShortcutsRef.current = showShortcuts
   const isResizing = useRef(false)
   const resizeStartX = useRef(0)
   const resizeStartWidth = useRef(0)
@@ -338,6 +530,21 @@ function App() {
     if (graph) setShowDropzone(false)
   }, [graph])
 
+  // Avionics-annunciator-style status line: a single line of feedback for
+  // actions that were previously silent (a rejected rewire, nodes skipped
+  // during bulk delete, a completed undo/copy) or destructive-looking
+  // (a failed benchmark/export that no longer tears down the workspace,
+  // see operationError below), auto-clearing after a few seconds.
+  const announce = (text: string, tone: 'reject' | 'info' = 'info') => {
+    if (announceTimeoutRef.current) clearTimeout(announceTimeoutRef.current)
+    setAnnouncement({ text, tone })
+    announceTimeoutRef.current = setTimeout(() => setAnnouncement(null), 4000)
+  }
+
+  useEffect(() => {
+    if (operationError) announce(operationError.message, 'reject')
+  }, [operationError])
+
   // Shared by the Delete keyboard shortcut and the "Delete all" bulk button --
   // covers a single selected node too, since selectedNodeIds always contains the
   // primary selection (see applySelection). Only unambiguous nodes (dead-end or a
@@ -359,7 +566,14 @@ function App() {
       newOps.push({ type: 'delete', nodeId, nodeIndex, keepInputPosition })
       newUndo.push({ kind: 'structural' })
     }
-    if (newOps.length === 0) return
+    const skipped = ids.size - newOps.length
+    if (newOps.length === 0) {
+      announce(`${skipped} of ${ids.size} node${ids.size === 1 ? '' : 's'} skipped: ambiguous or ineligible`, 'reject')
+      return
+    }
+    if (skipped > 0) {
+      announce(`Deleted ${newOps.length} of ${ids.size} -- ${skipped} skipped: ambiguous or ineligible`, 'reject')
+    }
     setStructuralOps(prev => [...prev, ...newOps])
     setUndoStack(prev => [...prev, ...newUndo])
     setSelectedNodeId(null)
@@ -383,10 +597,12 @@ function App() {
             next.set(last.nodeId, existing)
             return next
           })
+          announce(`Undid ${last.attrName} edit`)
         } else {
           // Structural ops are strict append-order, so popping the last undo
           // entry and the last op always correspond, regardless of delete/insert.
           setStructuralOps(prev => prev.slice(0, -1))
+          announce('Undid last structural edit')
         }
         return
       }
@@ -396,6 +612,10 @@ function App() {
         return
       }
       if (e.key === 'Escape') {
+        if (showShortcutsRef.current) {
+          setShowShortcuts(false)
+          return
+        }
         if (pendingNodeTypeRef.current) {
           setPendingNodeType(null)
           return
@@ -410,6 +630,11 @@ function App() {
       if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
         e.preventDefault()
         filterInputRef.current?.focus()
+        return
+      }
+      if (e.key === '?' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        e.preventDefault()
+        setShowShortcuts(v => !v)
       }
     }
     window.addEventListener('keydown', handler)
@@ -569,6 +794,13 @@ function App() {
     applySelection(next, primary)
   }
 
+  // Fired once when a Shift+drag selection box completes (see GraphCanvas's
+  // onSelectionEnd) -- an empty box (nothing under it) clears the selection,
+  // matching the usual click-on-empty-space-to-deselect convention.
+  const handleBoxSelect = (nodeIds: string[]) => {
+    applySelection(new Set(nodeIds), nodeIds[0] ?? null)
+  }
+
   const handleBulkExclude = () => {
     setExcludedNodeIds((prev) => new Set([...prev, ...selectedNodeIds]))
     setSelectableGraph((sg) => (sg ? bulkExclude(sg, selectedNodeIds) : sg))
@@ -630,7 +862,10 @@ function App() {
   const handleRewire = (sourceNodeId: string, targetNodeId: string, inputPosition: number) => {
     if (!graphWithStructuralEdits) return
     const validation = validateRewire(graphWithStructuralEdits, sourceNodeId, targetNodeId, inputPosition)
-    if (!validation.valid) return
+    if (!validation.valid) {
+      announce(`Rewire rejected: ${validation.reason ?? 'invalid connection'}`, 'reject')
+      return
+    }
     const sourceNodeIndex = structuralNodeIndex(sourceNodeId)
     const targetNodeIndex = structuralNodeIndex(targetNodeId)
     if (sourceNodeIndex === null || targetNodeIndex === null) return
@@ -683,16 +918,27 @@ function App() {
   // synthetic passthrough source/target is a deliberate scope boundary -- chaining
   // edits onto a generated passthrough would require resolving ops against ops
   // rather than always against the original model.
+  // Called from the confirm button in GraphCanvas's edge-click popover, not
+  // from the raw click itself -- inserting a node used to happen on a single
+  // unlabeled click, which both mutated the model with zero warning and was
+  // undiscoverable as a feature in the first place.
   const handleEdgeClick = (targetNodeId: string, tensorName: string) => {
     if (!graphWithStructuralEdits) return
-    if (structuralNodeIndex(targetNodeId) === null) return
+    if (structuralNodeIndex(targetNodeId) === null) {
+      announce('Cannot insert here: not an editable target', 'reject')
+      return
+    }
     const targetNode = graphWithStructuralEdits.nodes.find(n => n.id === targetNodeId)
     if (!targetNode) return
     const inputPosition = targetNode.inputs.indexOf(tensorName)
     if (inputPosition === -1) return
     const incoming = graphWithStructuralEdits.edges.find(e => e.target === targetNodeId && e.label === tensorName)
-    if (!incoming || incoming.source.startsWith('passthrough_')) return
+    if (!incoming || incoming.source.startsWith('passthrough_')) {
+      announce('Cannot insert onto a generated connection', 'reject')
+      return
+    }
     handleInsertPassthrough(targetNodeId, inputPosition)
+    announce(`Inserted passthrough on ${tensorName} (Ctrl+Z to undo)`)
   }
 
   const handleReset = () => {
@@ -707,7 +953,7 @@ function App() {
       const a = document.createElement('a')
       a.href = url
       const baseName = (graph?.modelName ?? 'model').replace(/\.[^.]+$/, '')
-      a.download = baseName + '_export.onnx'
+      a.download = baseName + '_original.onnx'
       a.click()
       URL.revokeObjectURL(url)
     })
@@ -742,8 +988,8 @@ function App() {
   }
 
   const benchmarkLabel = benchmarkResult
-    ? `avg ${benchmarkResult.avgMs.toFixed(1)} ms / min ${benchmarkResult.minMs.toFixed(1)} ms / max ${benchmarkResult.maxMs.toFixed(1)} ms (${benchmarkResult.runs} runs)`
-    : status === 'benchmarking' ? 'Benchmarking...' : null
+    ? `avg ${benchmarkResult.avgMs.toFixed(1)} ms / median ${benchmarkResult.medianMs.toFixed(1)} ms / min ${benchmarkResult.minMs.toFixed(1)} ms / max ${benchmarkResult.maxMs.toFixed(1)} ms (${benchmarkResult.runs} runs, batch 1, zeroed inputs)`
+    : status === 'benchmarking' ? 'Running warmup + benchmark...' : null
 
   const dropzoneStatus =
     status === 'running' || status === 'benchmarking' || status === 'exporting' ? 'loading' :
@@ -751,9 +997,50 @@ function App() {
     status
 
   const isReady = status === 'ready' || status === 'benchmarking' || status === 'exporting'
+  const workspaceShown = isReady && !!filteredGraph && !showDropzone
+
+  // Lets a model be dropped at any time to replace the one currently open --
+  // previously the only way back to a file picker was the "Load new" button.
+  // Only active once a graph is already shown; ModelDropzone owns its own
+  // drop target for the empty/loading/error states.
+  const handleRootDragEnter = (e: React.DragEvent) => {
+    if (!workspaceShown) return
+    e.preventDefault()
+    dragDepthRef.current += 1
+    if (dragDepthRef.current === 1) setDragOverlay(true)
+  }
+  const handleRootDragOver = (e: React.DragEvent) => {
+    if (!workspaceShown) return
+    e.preventDefault()
+  }
+  const handleRootDragLeave = (e: React.DragEvent) => {
+    if (!workspaceShown) return
+    e.preventDefault()
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    if (dragDepthRef.current === 0) setDragOverlay(false)
+  }
+  const handleRootDrop = (e: React.DragEvent) => {
+    if (!workspaceShown) return
+    e.preventDefault()
+    dragDepthRef.current = 0
+    setDragOverlay(false)
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) handleModelLoaded(reader.result, file.name)
+    }
+    reader.readAsArrayBuffer(file)
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', background: 'var(--bg-base)', overflow: 'hidden' }}>
+    <div
+      style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', background: 'var(--bg-base)', overflow: 'hidden' }}
+      onDragEnter={handleRootDragEnter}
+      onDragOver={handleRootDragOver}
+      onDragLeave={handleRootDragLeave}
+      onDrop={handleRootDrop}
+    >
       {(showDropzone || !isReady) && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 10 }}>
           <ModelDropzone
@@ -787,6 +1074,7 @@ function App() {
             onLayoutToggle={() => setLayoutDir(d => d === 'TB' ? 'LR' : 'TB')}
             onBenchmark={() => runBenchmark(10)}
             benchmarkLabel={benchmarkLabel}
+            isBenchmarking={status === 'benchmarking'}
             onDownload={handleDownload}
             canDownload={status === 'ready'}
             onDownloadModified={handleDownloadModified}
@@ -794,7 +1082,29 @@ function App() {
             onReset={handleReset}
             onAddNode={handleAddNode}
             isReadOnly={isReadOnly}
+            editCount={attrOverrides.size + structuralOps.length}
           />
+          <div
+            data-testid="announcement"
+            role="status"
+            aria-live="polite"
+            style={{
+              height: 22,
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0 24px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              letterSpacing: '0.04em',
+              background: '#0E1114',
+              borderBottom: announcement ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
+              color: announcement?.tone === 'reject' ? 'var(--color-error)' : 'var(--color-amber)',
+              transition: 'color 140ms ease, border-color 140ms ease',
+            }}
+          >
+            {announcement?.text ?? ''}
+          </div>
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
             <div style={{ flex: 1, height: '100%' }}>
               <GraphCanvas
@@ -803,6 +1113,7 @@ function App() {
                 selectedNodeId={selectedNodeId}
                 onNodeSelect={handleNodeSelect}
                 onNodeCtrlClick={handleNodeCtrlClick}
+                onBoxSelect={handleBoxSelect}
                 onEdgeClick={isReadOnly ? undefined : handleEdgeClick}
                 onRewire={isReadOnly ? undefined : handleRewire}
                 pendingNodeType={isReadOnly ? null : pendingNodeType}
@@ -831,11 +1142,39 @@ function App() {
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               />
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} />
+                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} onCopy={() => announce('Copied to clipboard')} />
               </div>
             </div>
           </div>
         </>
+      )}
+      {showShortcuts && <ShortcutsOverlay onClose={() => setShowShortcuts(false)} />}
+      {dragOverlay && (
+        <div
+          data-testid="drag-replace-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 3000,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            background: 'rgba(18,22,26,0.92)',
+            border: '2px dashed var(--color-amber)',
+            pointerEvents: 'none',
+          }}
+        >
+          <span style={{ color: 'var(--color-amber)', textTransform: 'uppercase', letterSpacing: '0.16em', fontSize: 15, fontFamily: 'var(--font-mono)' }}>
+            Drop to replace current model
+          </span>
+          {attrOverrides.size + structuralOps.length > 0 && (
+            <span style={{ color: 'var(--color-error)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+              Unsaved edits will be lost
+            </span>
+          )}
+        </div>
       )}
     </div>
   )

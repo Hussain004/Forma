@@ -67,19 +67,19 @@ describe('layout direction toggle', () => {
     loadModel(buildGraph())
   })
 
-  it('shows a TB button in the stats bar when a model is loaded', () => {
-    expect(screen.getByRole('button', { name: 'TB' })).toBeInTheDocument()
+  it('shows a LAYOUT TB button in the stats bar when a model is loaded', () => {
+    expect(screen.getByRole('button', { name: 'LAYOUT TB' })).toBeInTheDocument()
   })
 
-  it('changes the label to LR when clicked', () => {
-    fireEvent.click(screen.getByRole('button', { name: 'TB' }))
-    expect(screen.getByRole('button', { name: 'LR' })).toBeInTheDocument()
+  it('changes the label to LAYOUT LR when clicked', () => {
+    fireEvent.click(screen.getByRole('button', { name: 'LAYOUT TB' }))
+    expect(screen.getByRole('button', { name: 'LAYOUT LR' })).toBeInTheDocument()
   })
 
-  it('changes back to TB when clicked again', () => {
-    fireEvent.click(screen.getByRole('button', { name: 'TB' }))
-    fireEvent.click(screen.getByRole('button', { name: 'LR' }))
-    expect(screen.getByRole('button', { name: 'TB' })).toBeInTheDocument()
+  it('changes back to LAYOUT TB when clicked again', () => {
+    fireEvent.click(screen.getByRole('button', { name: 'LAYOUT TB' }))
+    fireEvent.click(screen.getByRole('button', { name: 'LAYOUT LR' }))
+    expect(screen.getByRole('button', { name: 'LAYOUT TB' })).toBeInTheDocument()
   })
 })
 

@@ -31,6 +31,7 @@ interface LayerInspectorProps {
   onAttrEdit?: (nodeId: string, attrName: string, value: string | number) => void
   onDeleteNode?: (nodeId: string, keepInputPosition: number | null) => void
   deleteEligibility?: DeleteEligibility
+  onCopy?: () => void
 }
 
 const bulkButtonStyle: React.CSSProperties = {
@@ -87,6 +88,20 @@ function Row({ label, value }: { label: string; value: string }) {
   )
 }
 
+// Tensor name + (when known) its shape, one row -- replaces what used to be
+// two separate sections ("Input shapes" and "Inputs") that both listed every
+// tensor name, once with a shape and once without. Tensor names aren't
+// semantic labels like "OP TYPE" (they're arbitrary, sometimes long
+// identifiers), so this deliberately doesn't reuse Row's uppercase labelStyle.
+function IORow({ name, shape }: { name: string; shape?: string }) {
+  return (
+    <div style={{ ...rowStyle, gap: 8 }}>
+      <span style={{ color: 'var(--text-secondary)', fontSize: 11, wordBreak: 'break-word', flex: 1, minWidth: 0 }}>{name}</span>
+      {shape && <span style={{ color: 'var(--text-dim)', fontSize: 10, whiteSpace: 'nowrap' }}>{shape}</span>}
+    </div>
+  )
+}
+
 function sectionHeader(label: string) {
   return (
     <div
@@ -117,7 +132,7 @@ function sensitivityColor(params: number): string {
   return '#52C57A'
 }
 
-export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onBulkDelete, onAttrEdit, onDeleteNode, deleteEligibility }: LayerInspectorProps) {
+export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onBulkDelete, onAttrEdit, onDeleteNode, deleteEligibility, onCopy }: LayerInspectorProps) {
   const [editingAttr, setEditingAttr] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [hoveredAttr, setHoveredAttr] = useState<string | null>(null)
@@ -140,7 +155,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
       <div
         style={{
           background: 'var(--bg-surface)',
-          borderLeft: '2px solid #FFB000',
+          borderLeft: '2px solid var(--color-amber)',
           padding: 16,
           height: '100%',
           minWidth: 260,
@@ -148,7 +163,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           boxSizing: 'border-box',
         }}
       >
-        <div style={{ color: '#FFB000', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: '0.08em', marginBottom: 12, textTransform: 'uppercase' }}>
+        <div style={{ color: 'var(--color-amber)', fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: '0.08em', marginBottom: 12, textTransform: 'uppercase' }}>
           {multiSelection.nodes.length} Nodes Selected
         </div>
         <div style={rowStyle}>
@@ -190,6 +205,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
             height: '100%',
             minWidth: 260,
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -203,6 +219,9 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
             }}
           >
             Select a node
+          </span>
+          <span style={{ color: 'var(--text-dim)', letterSpacing: '0.06em', fontSize: 10, marginTop: 8 }}>
+            Press ? for shortcuts
           </span>
         </div>
       )
@@ -278,6 +297,9 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
             ))}
           </>
         )}
+        <div style={{ marginTop: 20, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', color: 'var(--text-dim)', fontSize: 10, letterSpacing: '0.04em' }}>
+          Click a node to inspect. Press ? for shortcuts.
+        </div>
       </div>
     )
   }
@@ -294,7 +316,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
     if (attrs.length > 0) attrs.forEach(([k, v]) => lines.push(`${k}: ${v}`))
     if (node.inputs.length > 0) lines.push(`Inputs:     ${node.inputs.join(', ')}`)
     if (node.outputs.length > 0) lines.push(`Outputs:    ${node.outputs.join(', ')}`)
-    navigator.clipboard.writeText(lines.join('\n')).catch(() => {})
+    navigator.clipboard.writeText(lines.join('\n')).then(() => onCopy?.()).catch(() => {})
   }
 
   function startEdit(attrName: string, current: string | number) {
@@ -323,7 +345,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
     <div
       style={{
         background: 'var(--bg-surface)',
-        borderLeft: '2px solid #FFB000',
+        borderLeft: '2px solid var(--color-amber)',
         padding: 16,
         height: '100%',
         minWidth: 260,
@@ -336,7 +358,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           <span style={{
             fontSize: 9,
             letterSpacing: '0.08em',
-            color: '#FFB000',
+            color: 'var(--color-amber)',
             background: 'rgba(255,176,0,0.12)',
             padding: '2px 6px',
             borderRadius: 1,
@@ -355,95 +377,6 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
       </div>
       <Row label="OP TYPE" value={node.opType} />
       {node.name && <Row label="NODE NAME" value={node.name} />}
-      <Row label="PARAMETERS" value={node.paramCount.toLocaleString()} />
-      <Row label="EST. SIZE" value={`${node.estimatedSizeMB.toFixed(3)} MB`} />
-      {node.estimatedSizeMB > 0 && quantizeEstimate && quantizeEstimate.ratio > 0 && (
-        <div style={{ color: 'var(--text-dim)', fontSize: 10, padding: '2px 0 0 108px', letterSpacing: '0.04em' }}>
-          {`INT8: ${(node.estimatedSizeMB / quantizeEstimate.ratio).toFixed(3)} MB`}
-        </div>
-      )}
-
-      {isCompute && node.paramCount > 0 && (
-        <div style={{ ...rowStyle, alignItems: 'center' }}>
-          <span style={labelStyle}>SENSITIVITY</span>
-          <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: sensitivityColor(node.paramCount), letterSpacing: '0.04em' }}>
-            {sensitivityLabel(node.paramCount)}
-          </span>
-        </div>
-      )}
-
-      {isCompute && (
-        <div style={{ ...rowStyle, alignItems: 'center' }}>
-          <span style={labelStyle}>EXCLUDED</span>
-          <button
-            onClick={() => node && onToggleExclude?.(node.id)}
-            style={{
-              border: node.excluded ? '1px solid #FFB000' : '1px solid rgba(255,255,255,0.15)',
-              color: node.excluded ? '#FFB000' : 'var(--text-dim)',
-              fontSize: 10,
-              padding: '2px 10px',
-            }}
-          >
-            {node.excluded ? 'YES' : 'NO'}
-          </button>
-        </div>
-      )}
-
-      {isCompute && onDeleteNode && deleteEligibility && (
-        <div style={{ ...rowStyle, flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={labelStyle}>DELETE NODE</span>
-            <button
-              data-testid="delete-node-button"
-              disabled={!deleteEligibility.eligible}
-              title={deleteEligibility.reason}
-              onClick={() => {
-                if (!deleteEligibility.eligible) return
-                if (deleteEligibility.candidateInputs.length > 1) {
-                  setShowDeletePicker((v) => !v)
-                  return
-                }
-                onDeleteNode(node.id, deleteEligibility.candidateInputs[0]?.position ?? null)
-              }}
-              className="btn-danger"
-              style={{ fontSize: 10, padding: '2px 10px' }}
-            >
-              {deleteEligibility.candidateInputs.length > 1 ? 'Choose source' : 'Delete'}
-            </button>
-          </div>
-          {!deleteEligibility.eligible && deleteEligibility.reason && (
-            <div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.02em', paddingLeft: 108 }}>
-              {deleteEligibility.reason}
-            </div>
-          )}
-          {showDeletePicker && deleteEligibility.eligible && deleteEligibility.candidateInputs.length > 1 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingLeft: 108 }}>
-              <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Reconnect using
-              </div>
-              {deleteEligibility.candidateInputs.map((c) => (
-                <div
-                  key={c.position}
-                  data-testid={`delete-picker-option-${c.position}`}
-                  onClick={() => { onDeleteNode(node.id, c.position); setShowDeletePicker(false) }}
-                  style={{
-                    cursor: 'pointer',
-                    padding: '4px 8px',
-                    fontSize: 11,
-                    fontFamily: 'var(--font-mono)',
-                    color: 'var(--text-primary)',
-                    background: 'rgba(255,176,0,0.06)',
-                    border: '1px solid rgba(255,176,0,0.2)',
-                    borderRadius: 1,
-                  }}
-                >
-                  {c.tensorName}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {Object.keys(node.attributes ?? {}).length > 0 && (
         <>
@@ -452,7 +385,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
             const original = v as string | number
             const isEditing = editingAttr === k
             const isHovered = hoveredAttr === k
-            const pencilColor = isHovered ? '#FFB000' : '#3A4050'
+            const pencilColor = isHovered ? 'var(--color-amber)' : 'var(--text-dim)'
             const hoverRowStyle: CSSProperties = {
               ...rowStyle,
               background: isHovered && !isEditing ? 'rgba(255,176,0,0.04)' : 'transparent',
@@ -485,10 +418,13 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                     }}
                   />
                 ) : (
-                  <div
+                  <button
+                    type="button"
                     data-testid={`attr-value-${k}`}
-                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, cursor: 'text', minWidth: 0 }}
+                    className="attr-value-button"
+                    title={`Edit ${k}`}
                     onClick={() => startEdit(k, original)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') startEdit(k, original) }}
                     onMouseEnter={() => setHoveredAttr(k)}
                     onMouseLeave={() => setHoveredAttr(null)}
                   >
@@ -496,7 +432,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                       {String(v)}
                     </span>
                     <PencilIcon color={pencilColor} />
-                  </div>
+                  </button>
                 )}
               </div>
             )
@@ -504,31 +440,11 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
         </>
       )}
 
-      {node.inputShapes && node.inputShapes.length > 0 && (
-        <>
-          {sectionHeader('Input shapes')}
-          {node.inputShapes.map((shape, i) => (
-            <Row key={i} label={node.inputs[i] ?? `input_${i}`} value={formatShape(shape) || 'unknown'} />
-          ))}
-        </>
-      )}
-
-      {node.outputShapes && node.outputShapes.length > 0 && (
-        <>
-          {sectionHeader('Output shapes')}
-          {node.outputShapes.map((shape, i) => (
-            <Row key={i} label={node.outputs[i] ?? `output_${i}`} value={formatShape(shape) || 'unknown'} />
-          ))}
-        </>
-      )}
-
       {node.inputs.length > 0 && (
         <>
           {sectionHeader('Inputs')}
-          {node.inputs.map((inp) => (
-            <div key={inp} style={{ ...rowStyle, gap: 0 }}>
-              <span style={{ ...valueStyle, fontSize: 11, color: 'var(--text-secondary)' }}>{inp}</span>
-            </div>
+          {node.inputs.map((inp, i) => (
+            <IORow key={inp || i} name={inp || `input_${i}`} shape={node.inputShapes?.[i] !== undefined ? (formatShape(node.inputShapes[i]) || 'unknown') : undefined} />
           ))}
         </>
       )}
@@ -536,12 +452,111 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
       {node.outputs.length > 0 && (
         <>
           {sectionHeader('Outputs')}
-          {node.outputs.map((out) => (
-            <div key={out} style={{ ...rowStyle, gap: 0 }}>
-              <span style={{ ...valueStyle, fontSize: 11, color: 'var(--text-secondary)' }}>{out}</span>
-            </div>
+          {node.outputs.map((out, i) => (
+            <IORow key={out || i} name={out || `output_${i}`} shape={node.outputShapes?.[i] !== undefined ? (formatShape(node.outputShapes[i]) || 'unknown') : undefined} />
           ))}
         </>
+      )}
+
+      {sectionHeader('Stats')}
+      <Row label="PARAMETERS" value={node.paramCount.toLocaleString()} />
+      <Row label="EST. SIZE" value={`${node.estimatedSizeMB.toFixed(3)} MB`} />
+      {node.estimatedSizeMB > 0 && quantizeEstimate && quantizeEstimate.ratio > 0 && (
+        <div style={{ color: 'var(--text-dim)', fontSize: 10, padding: '2px 0 0 108px', letterSpacing: '0.04em' }}>
+          {`INT8: ${(node.estimatedSizeMB / quantizeEstimate.ratio).toFixed(3)} MB`}
+        </div>
+      )}
+      {isCompute && node.paramCount > 0 && (
+        <div style={{ ...rowStyle, alignItems: 'center' }}>
+          <span style={labelStyle} title="A heuristic based on parameter count only -- not a profiling measurement">
+            SENSITIVITY
+          </span>
+          <span
+            title="A heuristic based on parameter count only -- not a profiling measurement"
+            style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: sensitivityColor(node.paramCount), letterSpacing: '0.04em' }}
+          >
+            {sensitivityLabel(node.paramCount)}
+          </span>
+        </div>
+      )}
+
+      {isCompute && (
+        <div style={{ marginTop: 20, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ ...rowStyle, alignItems: 'center', border: 'none' }}>
+            <button
+              onClick={() => node && onToggleExclude?.(node.id)}
+              title="Excludes this node from the model summary's param/size rollups and dims it on the canvas. Never affects export -- the node stays in the model either way."
+              style={{
+                border: node.excluded ? '1px solid var(--color-amber)' : '1px solid rgba(255,255,255,0.15)',
+                color: node.excluded ? 'var(--color-amber)' : 'var(--text-secondary)',
+                fontSize: 10,
+                padding: '3px 10px',
+              }}
+            >
+              {node.excluded ? 'Include in stats' : 'Exclude from stats'}
+            </button>
+          </div>
+
+          {onDeleteNode && deleteEligibility && (
+            <div style={{ ...rowStyle, flexDirection: 'column', alignItems: 'stretch', gap: 6, border: 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={labelStyle}>DELETE NODE</span>
+                <button
+                  data-testid="delete-node-button"
+                  disabled={!deleteEligibility.eligible}
+                  title={deleteEligibility.reason}
+                  onClick={() => {
+                    if (!deleteEligibility.eligible) return
+                    if (deleteEligibility.candidateInputs.length > 1) {
+                      setShowDeletePicker((v) => !v)
+                      return
+                    }
+                    onDeleteNode(node.id, deleteEligibility.candidateInputs[0]?.position ?? null)
+                  }}
+                  className="btn-danger"
+                  style={{ fontSize: 10, padding: '2px 10px' }}
+                >
+                  {deleteEligibility.candidateInputs.length > 1 ? 'Choose source' : 'Delete'}
+                </button>
+              </div>
+              {!deleteEligibility.eligible && deleteEligibility.reason && (
+                <div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.02em', paddingLeft: 108 }}>
+                  {deleteEligibility.reason}
+                </div>
+              )}
+              {showDeletePicker && deleteEligibility.eligible && deleteEligibility.candidateInputs.length > 1 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingLeft: 108 }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    Reconnect using
+                  </div>
+                  {deleteEligibility.candidateInputs.map((c) => (
+                    <button
+                      key={c.position}
+                      type="button"
+                      data-testid={`delete-picker-option-${c.position}`}
+                      onClick={() => { onDeleteNode(node.id, c.position); setShowDeletePicker(false) }}
+                      style={{
+                        textAlign: 'left',
+                        textTransform: 'none',
+                        letterSpacing: 'normal',
+                        cursor: 'pointer',
+                        padding: '4px 8px',
+                        fontSize: 11,
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--text-primary)',
+                        background: 'rgba(255,176,0,0.06)',
+                        border: '1px solid rgba(255,176,0,0.2)',
+                        borderRadius: 1,
+                      }}
+                    >
+                      {c.tensorName}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

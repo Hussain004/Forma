@@ -17,10 +17,15 @@ type WorkerCommand =
 type WorkerResponse =
   | { type: 'MODEL_LOADED'; payload: OnnxGraph }
   | { type: 'INFERENCE_RESULT'; payload: { outputs: Record<string, Float32Array> } }
-  | { type: 'BENCHMARK_RESULT'; payload: { avgMs: number; minMs: number; maxMs: number; runs: number } }
+  | { type: 'BENCHMARK_RESULT'; payload: { avgMs: number; medianMs: number; minMs: number; maxMs: number; runs: number } }
   | { type: 'QUANTIZE_ESTIMATE'; payload: { int8SizeMB: number; originalSizeMB: number; ratio: number } }
   | { type: 'EXPORT_RESULT'; payload: ArrayBuffer }
-  | { type: 'ERROR'; payload: string }
+  // scope distinguishes a failed LOAD_MODEL (nothing usable exists yet, the
+  // dropzone/error screen is the right response) from a failed operation on an
+  // already-loaded model (benchmark/inference/export) -- the loaded graph and
+  // any pending edits are still perfectly good and shouldn't be torn down for
+  // a benchmark hiccup. See useOnnxWorker.ts for how each scope is handled.
+  | { type: 'ERROR'; payload: string; scope: 'load' | 'operation' }
   | { type: 'PROGRESS'; payload: { stage: string; percent: number } }
 
 const ctx = self as unknown as {
@@ -32,6 +37,19 @@ let session: ort.InferenceSession | null = null
 let benchmarkInputShapes: Record<string, number[]> = {}
 let benchmarkInputTypes: Record<string, number> = {}
 let exportBuffer: ArrayBuffer | null = null
+let isTfliteLoaded = false
+
+// Session creation (WASM download + compile) used to block MODEL_LOADED, so the
+// graph -- already fully parsed in milliseconds -- couldn't render until a ~20MB
+// runtime finished loading. Now it's created lazily on first actual use
+// (Benchmark or an inference run), from the same bytes retained for EXPORT.
+async function ensureSession(): Promise<ort.InferenceSession> {
+  if (session) return session
+  if (isTfliteLoaded) throw new Error('No TFLite runtime available -- TFLite models are view-only')
+  if (!exportBuffer) throw new Error('No model loaded')
+  session = await ort.InferenceSession.create(exportBuffer.slice(0))
+  return session
+}
 
 function makeBenchmarkTensor(elemType: number, size: number, shape: number[]): ort.Tensor {
   switch (elemType) {
@@ -54,18 +72,20 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
   try {
     if (cmd.type === 'LOAD_MODEL') {
       exportBuffer = null
+      session = null
       ctx.postMessage({ type: 'PROGRESS', payload: { stage: 'Parsing graph', percent: 10 } })
 
-      const isTflite = isTfliteBuffer(cmd.payload.buffer)
+      isTfliteLoaded = isTfliteBuffer(cmd.payload.buffer)
 
-      // Slice a copy for parsing; the original is transferred to InferenceSession (ONNX only)
+      // Slice a copy for parsing; a second copy is retained for EXPORT/benchmark below.
       const bufferForParsing = cmd.payload.buffer.slice(0)
-
-      // Keep a copy for the EXPORT command; the original is consumed by InferenceSession
       exportBuffer = cmd.payload.buffer.slice(0)
 
-      // Parse graph topology from raw bytes (reliable, no WASM internals)
-      const graph = isTflite
+      // Parse graph topology from raw bytes (reliable, no WASM internals). This is
+      // the only thing MODEL_LOADED waits on now -- no InferenceSession creation,
+      // so the graph renders immediately instead of blocking on a ~20MB WASM
+      // runtime download+compile that only Benchmark/inference actually need.
+      const graph = isTfliteLoaded
         ? parseTfliteGraph(bufferForParsing, cmd.payload.filename)
         : parseOnnxGraph(bufferForParsing, cmd.payload.filename)
 
@@ -79,14 +99,6 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
         if (vi.name) benchmarkInputTypes[vi.name] = vi.elemType ?? 1
       }
 
-      // No TFLite runtime exists in this project (this is a read-only viewer for TFLite
-      // models) -- session stays null, which the existing RUN_INFERENCE/BENCHMARK guards
-      // below already handle safely; the UI simply doesn't offer those actions for it.
-      if (!isTflite) {
-        ctx.postMessage({ type: 'PROGRESS', payload: { stage: 'Loading WASM runtime', percent: 50 } })
-        session = await ort.InferenceSession.create(cmd.payload.buffer)
-      }
-
       ctx.postMessage({ type: 'PROGRESS', payload: { stage: 'Ready', percent: 100 } })
       ctx.postMessage({ type: 'MODEL_LOADED', payload: graph })
 
@@ -95,41 +107,49 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
       const ratio = compressionRatio(graph.totalSizeMB, totalElemCount)
       ctx.postMessage({ type: 'QUANTIZE_ESTIMATE', payload: { int8SizeMB, originalSizeMB: graph.totalSizeMB, ratio } })
     } else if (cmd.type === 'RUN_INFERENCE') {
-      if (!session) throw new Error('No model loaded')
+      const s = await ensureSession()
       const feeds: Record<string, ort.Tensor> = {}
       for (const [name, data] of Object.entries(cmd.payload.inputs)) {
         const shape = cmd.payload.shapes[name]
         feeds[name] = new ort.Tensor('float32', data, shape)
       }
-      const results = await session.run(feeds)
+      const results = await s.run(feeds)
       const outputs: Record<string, Float32Array> = {}
       for (const [name, tensor] of Object.entries(results)) {
         outputs[name] = tensor.data as Float32Array
       }
       ctx.postMessage({ type: 'INFERENCE_RESULT', payload: { outputs } })
     } else if (cmd.type === 'BENCHMARK') {
-      if (!session) throw new Error('No model loaded')
+      const s = await ensureSession()
       const runs = Math.max(1, Math.min(cmd.payload.runs, 50))
 
       const feeds: Record<string, ort.Tensor> = {}
-      for (const name of session.inputNames) {
+      for (const name of s.inputNames) {
         const rawShape = benchmarkInputShapes[name] ?? [1]
         const shape = rawShape.map(d => (d < 1 ? 1 : d))
         const size = shape.reduce((a, b) => a * b, 1)
         feeds[name] = makeBenchmarkTensor(benchmarkInputTypes[name] ?? 1, size, shape)
       }
 
+      // Two untimed warmup runs first -- the first real run after a model loads
+      // pays for JIT warmup and allocator setup that later runs don't, which
+      // otherwise skews avg/max toward a cold-start number nobody will see again.
+      for (let i = 0; i < 2; i++) await s.run(feeds)
+
       const times: number[] = []
       for (let i = 0; i < runs; i++) {
         const t0 = performance.now()
-        await session.run(feeds)
+        await s.run(feeds)
         times.push(performance.now() - t0)
       }
 
+      const sorted = [...times].sort((a, b) => a - b)
+      const mid = Math.floor(sorted.length / 2)
+      const medianMs = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
       const avgMs = times.reduce((a, b) => a + b, 0) / times.length
       const minMs = Math.min(...times)
       const maxMs = Math.max(...times)
-      ctx.postMessage({ type: 'BENCHMARK_RESULT', payload: { avgMs, minMs, maxMs, runs } })
+      ctx.postMessage({ type: 'BENCHMARK_RESULT', payload: { avgMs, medianMs, minMs, maxMs, runs } })
     } else if (cmd.type === 'EXPORT') {
       if (!exportBuffer) throw new Error('No model loaded')
       // Transfer the buffer back to the main thread. Slice it so the worker retains a copy.
@@ -141,6 +161,6 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
       ctx.postMessage({ type: 'EXPORT_RESULT', payload: patched }, [patched])
     }
   } catch (err) {
-    ctx.postMessage({ type: 'ERROR', payload: (err as Error).message })
+    ctx.postMessage({ type: 'ERROR', payload: (err as Error).message, scope: cmd.type === 'LOAD_MODEL' ? 'load' : 'operation' })
   }
 }

@@ -276,7 +276,7 @@ describe('App -- Add Node picker (v1.5)', () => {
     fireEvent.click(screen.getByText('Add Node'))
     fireEvent.mouseDown(screen.getByTestId('add-node-option-Relu'))
 
-    expect(screen.getByText(/^1 NODES$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^1 NODE$/i)).toBeInTheDocument()
   })
 
   // React Flow's onInit (needed to resolve screenToFlowPosition for the pane
@@ -313,7 +313,7 @@ describe('App -- Add Node picker (v1.5)', () => {
     const pane = document.querySelector('.react-flow__pane')
     fireEvent.click(pane as Element)
 
-    expect(screen.getByText(/^1 NODES$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^1 NODE$/i)).toBeInTheDocument()
   })
 
   it('free-text entry then a canvas click places a node with that op type', async () => {
@@ -330,5 +330,28 @@ describe('App -- Add Node picker (v1.5)', () => {
     fireEvent.click(pane as Element)
 
     expect(screen.getByText(/^2 NODES$/i)).toBeInTheDocument()
+  })
+
+  it('the input-count stepper controls how many inputs the placed node gets', async () => {
+    render(createElement(App))
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    await flushReactFlowInit()
+
+    fireEvent.click(screen.getByText('Add Node'))
+    fireEvent.change(screen.getByTestId('add-node-query'), { target: { value: 'MyCustomOp' } })
+    fireEvent.mouseDown(screen.getByTestId('add-node-input-count-inc'))
+    fireEvent.mouseDown(screen.getByTestId('add-node-input-count-inc'))
+    expect(screen.getByTestId('add-node-input-count')).toHaveTextContent('3')
+
+    fireEvent.keyDown(screen.getByTestId('add-node-query'), { key: 'Enter' })
+    const pane = document.querySelector('.react-flow__pane')
+    fireEvent.click(pane as Element)
+
+    const placedNode = document.querySelector('[data-id^="custom_"]') as Element
+    expect(placedNode).not.toBeNull()
+    fireEvent.click(placedNode)
+    expect(screen.getAllByText(/^__unwired_custom_\d+_in\d+$/)).toHaveLength(3)
   })
 })

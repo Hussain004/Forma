@@ -63,7 +63,7 @@ const handleStyle = {
   width: 6,
   height: 6,
   borderRadius: 0,
-  background: '#FFB000',
+  background: 'var(--color-amber)',
   border: 'none',
 }
 
@@ -93,14 +93,14 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
     : '1px solid rgba(255,255,255,0.12)'
   const accent = data.excluded
     ? 'rgba(255,255,255,0.08)'
-    : traceAccent(data.traceRole) ?? (selected ? '#FFB000' : opCategoryColor(data.opType))
+    : traceAccent(data.traceRole) ?? (selected ? 'var(--color-amber)' : opCategoryColor(data.opType))
   return (
     <div
       style={{
         position: 'relative',
         width: NODE_WIDTH,
         minHeight: NODE_HEIGHT,
-        background: '#16191C',
+        background: 'var(--bg-surface)',
         border,
         borderRadius: 2,
         padding: '8px 12px',
@@ -115,12 +115,12 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
     >
       <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: accent, borderRadius: '2px 0 0 2px', transition: 'background-color 150ms ease' }} />
       {data.isModified && (
-        <div style={{ position: 'absolute', top: 3, right: 3, fontSize: 7, letterSpacing: '0.08em', color: '#FFB000', background: 'rgba(255,176,0,0.12)', padding: '1px 4px', borderRadius: 1 }}>
+        <div style={{ position: 'absolute', top: 3, right: 3, fontSize: 9, letterSpacing: '0.08em', color: 'var(--color-amber)', background: 'rgba(255,176,0,0.12)', padding: '1px 4px', borderRadius: 1 }}>
           MOD
         </div>
       )}
       {data.isSynthetic && (
-        <div style={{ position: 'absolute', top: 3, left: 7, fontSize: 7, letterSpacing: '0.08em', color: 'var(--color-green)', background: 'rgba(82,197,122,0.12)', padding: '1px 4px', borderRadius: 1 }}>
+        <div style={{ position: 'absolute', top: 3, left: 7, fontSize: 9, letterSpacing: '0.08em', color: 'var(--color-green)', background: 'rgba(82,197,122,0.12)', padding: '1px 4px', borderRadius: 1 }}>
           NEW
         </div>
       )}
@@ -137,14 +137,14 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
           style={{ ...handleStyle, left: `${((i + 1) / (Math.max(data.inputCount, 1) + 1)) * 100}%` }}
         />
       ))}
-      <div style={{ color: '#E8EAF0', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {data.opType}
       </div>
-      <div style={{ color: '#8A8F9E', fontSize: 10, letterSpacing: '0.06em' }}>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 10, letterSpacing: '0.06em' }}>
         {data.paramCount > 0 ? data.paramCount.toLocaleString() + ' PARAMS' : 'NO PARAMS'}
       </div>
       {data.shapeLabel && (
-        <div style={{ color: '#5A6070', fontSize: 9, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ color: 'var(--text-dim)', fontSize: 10, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {data.shapeLabel}
         </div>
       )}
@@ -163,17 +163,17 @@ function IONode({ data, selected }: NodeProps<Node<IOData>>) {
         : 1
   const ioAccent = data.excluded
     ? 'rgba(255,255,255,0.08)'
-    : traceAccent(data.traceRole) ?? '#FFB000'
+    : traceAccent(data.traceRole) ?? 'var(--color-amber)'
   return (
     <div
       style={{
         position: 'relative',
         width: NODE_WIDTH,
         minHeight: NODE_HEIGHT,
-        background: '#1C2128',
+        background: 'var(--bg-raised)',
         border: data.excluded
           ? '1px solid rgba(255,255,255,0.08)'
-          : selected ? '1px solid #FFB000' : '1px solid rgba(255,255,255,0.15)',
+          : selected ? '1px solid var(--color-amber)' : '1px solid rgba(255,255,255,0.15)',
         borderLeft: data.excluded ? '1px solid rgba(255,255,255,0.08)' : `2px solid ${ioAccent}`,
         borderRadius: 2,
         padding: '8px 12px',
@@ -188,11 +188,11 @@ function IONode({ data, selected }: NodeProps<Node<IOData>>) {
     >
       {data.excluded && <div style={strikeStyle} />}
       <Handle type="target" position={Position.Top} style={handleStyle} />
-      <div style={{ color: '#E8EAF0', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {data.label}
       </div>
       {data.shapeLabel && (
-        <div style={{ color: '#5A6070', fontSize: 9, letterSpacing: '0.04em' }}>
+        <div style={{ color: 'var(--text-dim)', fontSize: 10, letterSpacing: '0.04em' }}>
           {data.shapeLabel}
         </div>
       )}
@@ -210,6 +210,7 @@ interface GraphCanvasProps {
   selectedNodeId: string | null
   onNodeSelect: (nodeId: string) => void
   onNodeCtrlClick?: (nodeId: string) => void
+  onBoxSelect?: (nodeIds: string[]) => void
   onEdgeClick?: (targetNodeId: string, tensorName: string) => void
   onRewire?: (sourceNodeId: string, targetNodeId: string, inputPosition: number) => void
   pendingNodeType?: { opType: string; inputCount: number } | null
@@ -244,13 +245,18 @@ function toFlowGraph(
       : traceDescendants.has(n.id)
         ? 'descendant'
         : null
+    const label = isIO ? (n.outputs[0] ?? n.inputs[0] ?? n.opType) : n.opType
+    const ariaLabel = isIO
+      ? `${n.opType === 'Input' ? 'Input' : 'Output'} ${label}${shapeLabel ? `, shape ${shapeLabel}` : ''}`
+      : `${n.opType}${n.paramCount > 0 ? `, ${n.paramCount.toLocaleString()} params` : ', no params'}${n.excluded ? ', excluded from stats' : ''}`
     return {
       id: n.id,
       type: isIO ? 'io' : 'operator',
       position: { x: 0, y: 0 },
       selected: (n as SelectableNode).selected ?? (n.id === selectedNodeId),
+      ariaLabel,
       data: isIO
-        ? { label: n.outputs[0] ?? n.inputs[0] ?? n.opType, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive }
+        ? { label, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive }
         : { opType: n.opType, paramCount: n.paramCount, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive, isModified: n.isModified ?? false, isSynthetic: !ORIGINAL_NODE_ID_RE.test(n.id), inputCount: n.inputs.length },
     }
   })
@@ -272,10 +278,10 @@ function toFlowGraph(
         target: e.target,
         targetHandle: inputPosition >= 0 ? `in-${inputPosition}` : undefined,
         label: shapeLabel,
-        labelStyle: { fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#5A6070' },
-        labelBgStyle: { fill: '#12161A', fillOpacity: 0.85 },
+        labelStyle: { fontSize: 10, fontFamily: 'JetBrains Mono, monospace', fill: 'var(--text-dim)' },
+        labelBgStyle: { fill: 'var(--bg-base)', fillOpacity: 0.85 },
         labelBgPadding: [3, 4] as [number, number],
-        style: { stroke: '#FFB000', strokeWidth: 1, cursor: 'pointer' },
+        style: { stroke: 'var(--color-amber)', strokeWidth: 1, cursor: 'pointer' },
       }
     })
 
@@ -298,7 +304,7 @@ function JumpController({ jumpToNodeId }: { jumpToNodeId?: string | null }) {
 
 const EMPTY_TRACE: Set<string> = new Set()
 
-export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, onEdgeClick, onRewire, pendingNodeType, onPlaceNode, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE, layoutDir = 'TB' }: GraphCanvasProps) {
+export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, onBoxSelect, onEdgeClick, onRewire, pendingNodeType, onPlaceNode, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE, layoutDir = 'TB' }: GraphCanvasProps) {
   const computed = useMemo(
     () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir),
     [onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir],
@@ -309,6 +315,14 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null)
+  // Tracks canvas zoom so the placement ghost can match the size the node will
+  // actually render at -- without this it stays a fixed screen size while the
+  // placed node scales with the viewport, so the two visibly disagree.
+  const [zoom, setZoom] = useState(1)
+  // A plain click on an edge used to insert a passthrough node immediately --
+  // no confirmation, no indication edges were even clickable. Now a click
+  // opens this popover; only its own button commits the insert.
+  const [edgePopover, setEdgePopover] = useState<{ edgeId: string; targetNodeId: string; tensorName: string; x: number; y: number } | null>(null)
   // ReactFlowInstance.screenToFlowPosition is only reachable via useReactFlow(),
   // which requires being a descendant of <ReactFlow>'s own provider (see
   // JumpController above) -- GraphCanvas itself is the ancestor that renders
@@ -322,6 +336,21 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
 
   const hoveredNode = hoveredNodeId ? onnxNodes.find((n) => n.id === hoveredNodeId) : null
 
+  useEffect(() => {
+    if (!edgePopover) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setEdgePopover(null)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [edgePopover])
+
+  // Thickens the edge the popover is currently open for so the selection
+  // reads as deliberate rather than just another same-colored line.
+  const displayEdges = edgePopover
+    ? edges.map((e) => (e.id === edgePopover.edgeId ? { ...e, style: { ...e.style, strokeWidth: 2.5 } } : e))
+    : edges
+
   return (
     <div
       style={{ width: '100%', height: '100%', cursor: pendingNodeType ? 'crosshair' : undefined }}
@@ -330,24 +359,37 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
     >
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={displayEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         onInit={(instance) => { reactFlowInstanceRef.current = instance }}
+        onViewportChange={(viewport) => setZoom(viewport.zoom)}
+        // Shift+drag box-select works already (react-flow's own default:
+        // holding selectionKeyCode disables panOnDrag and turns the drag into
+        // a selection box) -- this just syncs the result into App's selection
+        // state. onSelectionEnd (not onSelectionChange) deliberately: it only
+        // fires for the drag-box gesture, not for ordinary clicks, so it can't
+        // fight the existing onNodeClick-driven select/ctrl-select path.
+        onSelectionEnd={() => {
+          const current = reactFlowInstanceRef.current?.getNodes() ?? []
+          onBoxSelect?.(current.filter((n) => n.selected).map((n) => n.id))
+        }}
         onNodeClick={(event, node) => {
+          setEdgePopover(null)
           if (event.ctrlKey || event.metaKey) {
             onNodeCtrlClick?.(node.id)
           } else {
             onNodeSelect(node.id)
           }
         }}
-        onEdgeClick={(_event, edge) => {
+        onEdgeClick={(event, edge) => {
           // The React Flow edge's `label` field is repurposed to show the tensor
           // shape (only when adjacent to the selection), not the tensor name --
           // resolve the real name from the original OnnxEdge with the same id.
           const original = onnxEdges.find((e) => e.id === edge.id)
-          if (original?.label) onEdgeClick?.(edge.target, original.label)
+          if (!original?.label) return
+          setEdgePopover({ edgeId: edge.id, targetNodeId: edge.target, tensorName: original.label, x: event.clientX, y: event.clientY })
         }}
         onConnect={(connection) => {
           const match = connection.targetHandle ? /^in-(\d+)$/.exec(connection.targetHandle) : null
@@ -355,12 +397,13 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
           onRewire?.(connection.source, connection.target, Number(match[1]))
         }}
         onPaneClick={(event) => {
+          setEdgePopover(null)
           if (!pendingNodeType) return
           const flowPos = reactFlowInstanceRef.current?.screenToFlowPosition({ x: event.clientX, y: event.clientY })
           if (!flowPos) return
           onPlaceNode?.({ x: flowPos.x - NODE_WIDTH / 2, y: flowPos.y - NODE_HEIGHT / 2 })
         }}
-        connectionLineStyle={{ stroke: '#FFB000', strokeWidth: 1 }}
+        connectionLineStyle={{ stroke: 'var(--color-amber)', strokeWidth: 1 }}
         onNodeMouseEnter={(event, node) => {
           setHoveredNodeId(node.id)
           setTooltipPos({ x: event.clientX, y: event.clientY })
@@ -373,22 +416,19 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
         proOptions={{ hideAttribution: true }}
         minZoom={0.1}
         maxZoom={3}
+        // Skip DOM nodes for elements outside the viewport once a graph gets big
+        // enough for it to matter -- gated by count (not always-on) because
+        // jsdom's zero-size bounding rects in tests would otherwise cull every
+        // node in every small test fixture.
+        onlyRenderVisibleElements={onnxNodes.length > 300}
       >
         <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#2A2F38" />
-        <Controls
-          showInteractive={false}
-          style={{
-            background: '#16191C',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 2,
-            boxShadow: 'none',
-          }}
-        />
+        <Controls showInteractive={false} />
         <MiniMap
-          nodeColor={() => '#FFB000'}
+          nodeColor={(node) => (node.type === 'operator' ? opCategoryColor((node.data as OperatorData).opType) : 'var(--color-amber)')}
           maskColor="rgba(18,22,26,0.8)"
           style={{
-            background: '#12161A',
+            background: 'var(--bg-base)',
             border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: 2,
           }}
@@ -397,6 +437,40 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
         />
         <JumpController jumpToNodeId={jumpToNodeId} />
       </ReactFlow>
+      {edgePopover && (
+        <div
+          data-testid="edge-insert-popover"
+          style={{
+            position: 'fixed',
+            left: edgePopover.x + 10,
+            top: edgePopover.y + 10,
+            background: 'var(--bg-raised)',
+            border: '1px solid rgba(255,176,0,0.3)',
+            borderRadius: 2,
+            padding: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            fontFamily: 'var(--font-mono)',
+            zIndex: 1500,
+          }}
+        >
+          <span style={{ color: 'var(--text-secondary)', fontSize: 11, letterSpacing: '0.02em', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {edgePopover.tensorName}
+          </span>
+          <button
+            data-testid="edge-insert-confirm"
+            onClick={() => {
+              onEdgeClick?.(edgePopover.targetNodeId, edgePopover.tensorName)
+              setEdgePopover(null)
+            }}
+            className="btn-bar btn-primary"
+            style={{ fontSize: 10, padding: '3px 8px', whiteSpace: 'nowrap' }}
+          >
+            Insert passthrough
+          </button>
+        </div>
+      )}
       {pendingNodeType && cursorPos && (
         <div
           data-testid="add-node-ghost"
@@ -406,7 +480,9 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             top: cursorPos.y - NODE_HEIGHT / 2,
             width: NODE_WIDTH,
             minHeight: NODE_HEIGHT,
-            background: '#16191C',
+            transform: `scale(${zoom})`,
+            transformOrigin: 'center center',
+            background: 'var(--bg-surface)',
             border: '1px dashed rgba(255,176,0,0.6)',
             borderRadius: 2,
             padding: '8px 12px',
@@ -420,11 +496,11 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             fontFamily: 'var(--font-mono)',
           }}
         >
-          <div style={{ color: '#FFB000', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em' }}>
+          <div style={{ color: 'var(--color-amber)', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em' }}>
             {pendingNodeType.opType}
           </div>
           <div style={{ color: 'var(--text-dim)', fontSize: 9, letterSpacing: '0.06em' }}>
-            CLICK TO PLACE
+            CLICK TO PLACE / ESC TO CANCEL
           </div>
         </div>
       )}
@@ -434,7 +510,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             position: 'fixed',
             left: tooltipPos.x + 16,
             top: tooltipPos.y + 8,
-            background: '#1C2128',
+            background: 'var(--bg-raised)',
             border: '1px solid rgba(255,255,255,0.15)',
             borderRadius: 2,
             padding: '8px 12px',
@@ -447,7 +523,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             letterSpacing: '0.04em',
           }}
         >
-          <div style={{ color: '#FFB000', marginBottom: 2 }}>{hoveredNode.opType}</div>
+          <div style={{ color: 'var(--color-amber)', marginBottom: 2 }}>{hoveredNode.opType}</div>
           {hoveredNode.name && (
             <div style={{ color: 'var(--text-dim)', fontSize: 9, letterSpacing: '0.04em', marginBottom: 4, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {hoveredNode.name}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, act, fireEvent } from '@testing-library/react'
+import { render, screen, act, fireEvent, waitFor } from '@testing-library/react'
 import App from '../App'
 import type { OnnxGraph } from '../lib/onnxTypes'
 
@@ -51,6 +51,26 @@ describe('App -- initial state', () => {
     render(<App />)
     expect(screen.queryByTestId('graph-canvas')).not.toBeInTheDocument()
   })
+
+  it('loads the bundled sample model via fetch when "Load sample model" is clicked', async () => {
+    const sampleBytes = new ArrayBuffer(8)
+    const fetchMock = vi.fn().mockResolvedValue({ arrayBuffer: () => Promise.resolve(sampleBytes) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: /load sample model/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/sample-model.onnx'))
+    await waitFor(() =>
+      expect(mockWorker.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'LOAD_MODEL',
+          payload: expect.objectContaining({ filename: 'sample-model.onnx' }),
+        }),
+        expect.anything(),
+      ),
+    )
+  })
 })
 
 describe('App -- model load flow', () => {
@@ -84,16 +104,139 @@ describe('App -- model load flow', () => {
     expect(screen.queryByText(/select a node/i)).not.toBeInTheDocument()
   })
 
-  it('shows error state when worker sends ERROR', () => {
+  it('shows error state when worker sends a load-scoped ERROR', () => {
     render(<App />)
 
     act(() => {
       mockWorker.onmessage?.({
-        data: { type: 'ERROR', payload: 'Failed to parse model' },
+        data: { type: 'ERROR', payload: 'Failed to parse model', scope: 'load' },
       } as MessageEvent)
     })
 
     expect(screen.getByText(/failed to parse model/i)).toBeInTheDocument()
+  })
+
+  it('keeps the loaded graph mounted when an operation-scoped ERROR arrives', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+
+    act(() => {
+      mockWorker.onmessage?.({
+        data: { type: 'ERROR', payload: 'benchmark failed', scope: 'operation' },
+      } as MessageEvent)
+    })
+
+    // The graph stays mounted -- a failed benchmark shouldn't replace the
+    // workspace with the full-screen dropzone/error screen. The message
+    // still reaches the user, just via the annunciator line, not a teardown.
+    expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    expect(screen.getByTestId('announcement')).toHaveTextContent(/benchmark failed/i)
+  })
+})
+
+// No jsdom test for the edge-insert popover: react-flow never populates
+// .react-flow__edges in jsdom (edge paths depend on node measurements from
+// ResizeObserver, which test-setup.ts stubs as a no-op) -- confirmed by
+// dumping the DOM directly, and no existing test in this codebase exercises
+// edge clicks for the same reason. Verified live against a production
+// preview build instead (see PROGRESS.md).
+
+describe('App -- drop anytime to replace the model', () => {
+  it('shows a replace overlay on dragenter and posts LOAD_MODEL for the dropped file on drop', async () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+
+    const root = screen.getByTestId('graph-canvas').closest('div[style*="height: 100vh"]') as Element
+    expect(screen.queryByTestId('drag-replace-overlay')).not.toBeInTheDocument()
+
+    fireEvent.dragEnter(root, { dataTransfer: { files: [] } })
+    expect(screen.getByTestId('drag-replace-overlay')).toBeInTheDocument()
+
+    const file = new File(['bytes'], 'replacement.onnx')
+    fireEvent.drop(root, { dataTransfer: { files: [file] } })
+    expect(screen.queryByTestId('drag-replace-overlay')).not.toBeInTheDocument()
+
+    await waitFor(() =>
+      expect(mockWorker.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'LOAD_MODEL',
+          payload: expect.objectContaining({ filename: 'replacement.onnx' }),
+        }),
+        expect.anything(),
+      ),
+    )
+  })
+
+  it('clears the overlay on dragleave without triggering a load', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    const root = screen.getByTestId('graph-canvas').closest('div[style*="height: 100vh"]') as Element
+
+    fireEvent.dragEnter(root, { dataTransfer: { files: [] } })
+    expect(screen.getByTestId('drag-replace-overlay')).toBeInTheDocument()
+
+    fireEvent.dragLeave(root, { dataTransfer: { files: [] } })
+    expect(screen.queryByTestId('drag-replace-overlay')).not.toBeInTheDocument()
+  })
+})
+
+describe('App -- keyboard shortcuts overlay', () => {
+  it('? opens the overlay, Esc closes it', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+
+    expect(screen.queryByTestId('shortcuts-overlay')).not.toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: '?' })
+    expect(screen.getByTestId('shortcuts-overlay')).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByTestId('shortcuts-overlay')).not.toBeInTheDocument()
+  })
+
+  it('closes via the Close button', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+
+    fireEvent.keyDown(window, { key: '?' })
+    fireEvent.click(screen.getByRole('button', { name: /close/i }))
+    expect(screen.queryByTestId('shortcuts-overlay')).not.toBeInTheDocument()
+  })
+})
+
+describe('App -- benchmark running state', () => {
+  it('disables the button and shows Running while a benchmark is in flight, then Benchmark again', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+
+    const button = screen.getByRole('button', { name: /benchmark/i })
+    expect(button).not.toBeDisabled()
+
+    fireEvent.click(button)
+    // The worker hasn't responded yet -- runBenchmark sets status synchronously.
+    expect(screen.getByRole('button', { name: /running/i })).toBeDisabled()
+
+    act(() => {
+      mockWorker.onmessage?.({
+        data: { type: 'BENCHMARK_RESULT', payload: { avgMs: 5, medianMs: 4.8, minMs: 4.1, maxMs: 6.2, runs: 10 } },
+      } as MessageEvent)
+    })
+
+    expect(screen.getByRole('button', { name: /^benchmark$/i })).not.toBeDisabled()
+    expect(screen.getByText(/avg 5\.0 ms \/ median 4\.8 ms/)).toBeInTheDocument()
   })
 })
 
