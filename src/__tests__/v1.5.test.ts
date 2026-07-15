@@ -276,7 +276,7 @@ describe('App -- Add Node picker (v1.5)', () => {
     fireEvent.click(screen.getByText('Add Node'))
     fireEvent.mouseDown(screen.getByTestId('add-node-option-Relu'))
 
-    expect(screen.getByText(/^1 NODES$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^1 NODE$/i)).toBeInTheDocument()
   })
 
   // React Flow's onInit (needed to resolve screenToFlowPosition for the pane
@@ -313,7 +313,7 @@ describe('App -- Add Node picker (v1.5)', () => {
     const pane = document.querySelector('.react-flow__pane')
     fireEvent.click(pane as Element)
 
-    expect(screen.getByText(/^1 NODES$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^1 NODE$/i)).toBeInTheDocument()
   })
 
   it('free-text entry then a canvas click places a node with that op type', async () => {

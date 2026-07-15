@@ -373,6 +373,11 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
         proOptions={{ hideAttribution: true }}
         minZoom={0.1}
         maxZoom={3}
+        // Skip DOM nodes for elements outside the viewport once a graph gets big
+        // enough for it to matter -- gated by count (not always-on) because
+        // jsdom's zero-size bounding rects in tests would otherwise cull every
+        // node in every small test fixture.
+        onlyRenderVisibleElements={onnxNodes.length > 300}
       >
         <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#2A2F38" />
         <Controls
@@ -385,7 +390,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
           }}
         />
         <MiniMap
-          nodeColor={() => '#FFB000'}
+          nodeColor={(node) => (node.type === 'operator' ? opCategoryColor((node.data as OperatorData).opType) : '#FFB000')}
           maskColor="rgba(18,22,26,0.8)"
           style={{
             background: '#12161A',

@@ -102,7 +102,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
           {quantizeLabel}
         </span>
       )}
-      <span>{nodeCount} NODES</span>
+      <span>{nodeCount} {nodeCount === 1 ? 'NODE' : 'NODES'}</span>
       <div style={{ position: 'relative' }}>
         <input
           ref={filterInputRef}
@@ -170,8 +170,12 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
         )}
       </div>
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, paddingLeft: 24, borderLeft: '1px solid rgba(255,255,255,0.08)' }}>
-        <button onClick={onLayoutToggle} className="btn-bar btn-ghost">
-          {layoutDir}
+        <button
+          onClick={onLayoutToggle}
+          title="Toggle top-to-bottom / left-to-right layout"
+          className="btn-bar btn-ghost"
+        >
+          LAYOUT {layoutDir}
         </button>
         {!isReadOnly && (
           <div style={{ position: 'relative' }}>

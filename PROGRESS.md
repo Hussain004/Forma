@@ -19,10 +19,10 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 - [ ] P1 Fix dim-text contrast and micro type sizes
 - [ ] P1 Make shortcuts discoverable
 - [ ] P1 Benchmark warmup and running state
-- [ ] P2 Layout toggle that says what it does
+- [x] P2 Layout toggle that says what it does
 - [ ] P2 Placement-mode polish
-- [ ] P2 MiniMap category colors and node-count grammar
-- [ ] P2 One-prop render culling for big graphs
+- [x] P2 MiniMap category colors and node-count grammar (model-name flex-width deferred to the stats bar responsive collapse item, where the bar's overflow behavior gets rebuilt properly)
+- [x] P2 One-prop render culling for big graphs (gated on `onnxNodes.length > 300`, not always-on -- jsdom reports zero-size bounding rects in tests, which would cull every node in every small fixture if this ran unconditionally)
 - [ ] P2 Consolidate the styling system
 - [ ] P2 Free-text Add Node input count
 
@@ -50,6 +50,8 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 ## Log
 
 (most recent first)
+
+- Layout toggle now reads "LAYOUT TB" / "LAYOUT LR" with a title attribute; MiniMap nodes colored by op category instead of uniform amber; node count singularizes to "1 NODE"; ReactFlow gets `onlyRenderVisibleElements` gated behind a 300-node threshold. Verified live in a production preview build (screenshot: minimap shows the Relu node green, matching its Activation category).
 
 - Removed the unused `reactflow` v11 package (nothing imports it, `@xyflow/react` v12 is the real dependency) and Vite-starter leftovers (react.svg, vite.svg, empty App.css). Left hero.png alone since it isn't referenced anywhere and wasn't called out in the audit -- may be intentional for future README use.
 
