@@ -18,7 +18,7 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 - [x] P1 Rename "Download" and fix its filename
 - [x] P1 Fix dim-text contrast and micro type sizes
 - [ ] P1 Make shortcuts discoverable
-- [ ] P1 Benchmark warmup and running state
+- [x] P1 Benchmark warmup and running state
 - [x] P2 Layout toggle that says what it does
 - [x] P2 Placement-mode polish
 - [x] P2 MiniMap category colors and node-count grammar (model-name flex-width deferred to the stats bar responsive collapse item, where the bar's overflow behavior gets rebuilt properly)
@@ -50,6 +50,8 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 ## Log
 
 (most recent first)
+
+- Benchmark now runs 2 untimed warmup iterations before the 10 timed runs (the first run after a model loads pays for JIT/allocator warmup that skewed avg/max), reports median alongside avg/min/max, and annotates the label with "batch 1, zeroed inputs" so the numbers aren't mistaken for something more rigorous than they are. Button disables and reads "Running" while in flight. New deterministic test (the tiny fixture completes benchmarking too fast for a wall-clock Playwright check to ever catch the in-flight state, so verified via a mock-worker unit test instead of live).
 
 - Merged the two overlapping `.react-flow__controls` CSS blocks (index.css's was silently dead -- theme.css's `!important` version always won the cascade, and was also the only one with the hover-to-amber and last-child rules) into a single token-based block in theme.css, and deleted the now-redundant inline `style` prop on `<Controls>` that duplicated it. Swept hardcoded hex colors that duplicate existing tokens (#FFB000, #16191C, #1C2128, #12161A, #E8EAF0, #8A8F9E) across GraphCanvas.tsx, App.tsx, LayerInspector.tsx, and ModelDropzone.tsx onto `var(--color-amber)` / `var(--bg-*)` / `var(--text-*)`. Deliberately left three spots alone since they're their own semantic tier scales that happen to reuse the same hex values, not simple token substitutions: `sensitivityColor()`, `CATEGORY_LEGEND`, and `traceAccent()` -- coupling those to the general-purpose tokens would mean an unrelated token change silently reshuffles those scales. Verified live with no broken `var()` resolution.
 

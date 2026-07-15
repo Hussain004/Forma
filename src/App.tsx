@@ -52,6 +52,7 @@ interface StatsBarProps {
   onLayoutToggle: () => void
   onBenchmark: () => void
   benchmarkLabel: string | null
+  isBenchmarking: boolean
   onDownload: () => void
   canDownload: boolean
   onDownloadModified: () => void
@@ -62,7 +63,7 @@ interface StatsBarProps {
   editCount: number
 }
 
-function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, onDownload, canDownload, onDownloadModified, canDownloadModified, onReset, isReadOnly, onAddNode, editCount }: StatsBarProps) {
+function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, isBenchmarking, onDownload, canDownload, onDownloadModified, canDownloadModified, onReset, isReadOnly, onAddNode, editCount }: StatsBarProps) {
   const quantizeLabel = formatQuantizeEstimate(quantizeEstimate)
   const [showAddNode, setShowAddNode] = useState(false)
   const [addNodeQuery, setAddNodeQuery] = useState('')
@@ -275,8 +276,8 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
           <span style={{ color: 'var(--color-green)' }}>{benchmarkLabel}</span>
         )}
         {!isReadOnly && (
-          <button onClick={onBenchmark} className="btn-bar">
-            Benchmark
+          <button onClick={onBenchmark} disabled={isBenchmarking} className="btn-bar">
+            {isBenchmarking ? 'Running' : 'Benchmark'}
           </button>
         )}
         {canDownload && (
@@ -777,8 +778,8 @@ function App() {
   }
 
   const benchmarkLabel = benchmarkResult
-    ? `avg ${benchmarkResult.avgMs.toFixed(1)} ms / min ${benchmarkResult.minMs.toFixed(1)} ms / max ${benchmarkResult.maxMs.toFixed(1)} ms (${benchmarkResult.runs} runs)`
-    : status === 'benchmarking' ? 'Benchmarking...' : null
+    ? `avg ${benchmarkResult.avgMs.toFixed(1)} ms / median ${benchmarkResult.medianMs.toFixed(1)} ms / min ${benchmarkResult.minMs.toFixed(1)} ms / max ${benchmarkResult.maxMs.toFixed(1)} ms (${benchmarkResult.runs} runs, batch 1, zeroed inputs)`
+    : status === 'benchmarking' ? 'Running warmup + benchmark...' : null
 
   const dropzoneStatus =
     status === 'running' || status === 'benchmarking' || status === 'exporting' ? 'loading' :
@@ -822,6 +823,7 @@ function App() {
             onLayoutToggle={() => setLayoutDir(d => d === 'TB' ? 'LR' : 'TB')}
             onBenchmark={() => runBenchmark(10)}
             benchmarkLabel={benchmarkLabel}
+            isBenchmarking={status === 'benchmarking'}
             onDownload={handleDownload}
             canDownload={status === 'ready'}
             onDownloadModified={handleDownloadModified}

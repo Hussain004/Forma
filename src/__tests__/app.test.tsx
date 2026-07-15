@@ -97,6 +97,31 @@ describe('App -- model load flow', () => {
   })
 })
 
+describe('App -- benchmark running state', () => {
+  it('disables the button and shows Running while a benchmark is in flight, then Benchmark again', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+
+    const button = screen.getByRole('button', { name: /benchmark/i })
+    expect(button).not.toBeDisabled()
+
+    fireEvent.click(button)
+    // The worker hasn't responded yet -- runBenchmark sets status synchronously.
+    expect(screen.getByRole('button', { name: /running/i })).toBeDisabled()
+
+    act(() => {
+      mockWorker.onmessage?.({
+        data: { type: 'BENCHMARK_RESULT', payload: { avgMs: 5, medianMs: 4.8, minMs: 4.1, maxMs: 6.2, runs: 10 } },
+      } as MessageEvent)
+    })
+
+    expect(screen.getByRole('button', { name: /^benchmark$/i })).not.toBeDisabled()
+    expect(screen.getByText(/avg 5\.0 ms \/ median 4\.8 ms/)).toBeInTheDocument()
+  })
+})
+
 describe('App -- single-select model', () => {
   it('LayerInspector shows node details after selecting a Conv node', async () => {
     render(<App />)

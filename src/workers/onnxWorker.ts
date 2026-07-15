@@ -17,7 +17,7 @@ type WorkerCommand =
 type WorkerResponse =
   | { type: 'MODEL_LOADED'; payload: OnnxGraph }
   | { type: 'INFERENCE_RESULT'; payload: { outputs: Record<string, Float32Array> } }
-  | { type: 'BENCHMARK_RESULT'; payload: { avgMs: number; minMs: number; maxMs: number; runs: number } }
+  | { type: 'BENCHMARK_RESULT'; payload: { avgMs: number; medianMs: number; minMs: number; maxMs: number; runs: number } }
   | { type: 'QUANTIZE_ESTIMATE'; payload: { int8SizeMB: number; originalSizeMB: number; ratio: number } }
   | { type: 'EXPORT_RESULT'; payload: ArrayBuffer }
   | { type: 'ERROR'; payload: string }
@@ -119,6 +119,11 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
         feeds[name] = makeBenchmarkTensor(benchmarkInputTypes[name] ?? 1, size, shape)
       }
 
+      // Two untimed warmup runs first -- the first real run after a model loads
+      // pays for JIT warmup and allocator setup that later runs don't, which
+      // otherwise skews avg/max toward a cold-start number nobody will see again.
+      for (let i = 0; i < 2; i++) await session.run(feeds)
+
       const times: number[] = []
       for (let i = 0; i < runs; i++) {
         const t0 = performance.now()
@@ -126,10 +131,13 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
         times.push(performance.now() - t0)
       }
 
+      const sorted = [...times].sort((a, b) => a - b)
+      const mid = Math.floor(sorted.length / 2)
+      const medianMs = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
       const avgMs = times.reduce((a, b) => a + b, 0) / times.length
       const minMs = Math.min(...times)
       const maxMs = Math.max(...times)
-      ctx.postMessage({ type: 'BENCHMARK_RESULT', payload: { avgMs, minMs, maxMs, runs } })
+      ctx.postMessage({ type: 'BENCHMARK_RESULT', payload: { avgMs, medianMs, minMs, maxMs, runs } })
     } else if (cmd.type === 'EXPORT') {
       if (!exportBuffer) throw new Error('No model loaded')
       // Transfer the buffer back to the main thread. Slice it so the worker retains a copy.

@@ -6,6 +6,7 @@ type Status = 'idle' | 'loading' | 'ready' | 'running' | 'benchmarking' | 'expor
 
 export interface BenchmarkResult {
   avgMs: number
+  medianMs: number
   minMs: number
   maxMs: number
   runs: number
