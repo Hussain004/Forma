@@ -137,6 +137,49 @@ describe('App -- model load flow', () => {
   })
 })
 
+describe('App -- drop anytime to replace the model', () => {
+  it('shows a replace overlay on dragenter and posts LOAD_MODEL for the dropped file on drop', async () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+
+    const root = screen.getByTestId('graph-canvas').closest('div[style*="height: 100vh"]') as Element
+    expect(screen.queryByTestId('drag-replace-overlay')).not.toBeInTheDocument()
+
+    fireEvent.dragEnter(root, { dataTransfer: { files: [] } })
+    expect(screen.getByTestId('drag-replace-overlay')).toBeInTheDocument()
+
+    const file = new File(['bytes'], 'replacement.onnx')
+    fireEvent.drop(root, { dataTransfer: { files: [file] } })
+    expect(screen.queryByTestId('drag-replace-overlay')).not.toBeInTheDocument()
+
+    await waitFor(() =>
+      expect(mockWorker.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'LOAD_MODEL',
+          payload: expect.objectContaining({ filename: 'replacement.onnx' }),
+        }),
+        expect.anything(),
+      ),
+    )
+  })
+
+  it('clears the overlay on dragleave without triggering a load', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    const root = screen.getByTestId('graph-canvas').closest('div[style*="height: 100vh"]') as Element
+
+    fireEvent.dragEnter(root, { dataTransfer: { files: [] } })
+    expect(screen.getByTestId('drag-replace-overlay')).toBeInTheDocument()
+
+    fireEvent.dragLeave(root, { dataTransfer: { files: [] } })
+    expect(screen.queryByTestId('drag-replace-overlay')).not.toBeInTheDocument()
+  })
+})
+
 describe('App -- keyboard shortcuts overlay', () => {
   it('? opens the overlay, Esc closes it', () => {
     render(<App />)

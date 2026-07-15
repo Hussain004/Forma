@@ -386,6 +386,11 @@ function App() {
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [announcement, setAnnouncement] = useState<{ text: string; tone: 'reject' | 'info' } | null>(null)
   const announceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [dragOverlay, setDragOverlay] = useState(false)
+  // dragenter/dragleave fire for every descendant element a drag passes over,
+  // not just the root -- a depth counter is the standard way to tell "left
+  // the root entirely" from "moved between two children of the root".
+  const dragDepthRef = useRef(0)
   const filterInputRef = useRef<HTMLInputElement>(null)
   const undoStackRef = useRef(undoStack)
   undoStackRef.current = undoStack
@@ -888,9 +893,50 @@ function App() {
     status
 
   const isReady = status === 'ready' || status === 'benchmarking' || status === 'exporting'
+  const workspaceShown = isReady && !!filteredGraph && !showDropzone
+
+  // Lets a model be dropped at any time to replace the one currently open --
+  // previously the only way back to a file picker was the "Load new" button.
+  // Only active once a graph is already shown; ModelDropzone owns its own
+  // drop target for the empty/loading/error states.
+  const handleRootDragEnter = (e: React.DragEvent) => {
+    if (!workspaceShown) return
+    e.preventDefault()
+    dragDepthRef.current += 1
+    if (dragDepthRef.current === 1) setDragOverlay(true)
+  }
+  const handleRootDragOver = (e: React.DragEvent) => {
+    if (!workspaceShown) return
+    e.preventDefault()
+  }
+  const handleRootDragLeave = (e: React.DragEvent) => {
+    if (!workspaceShown) return
+    e.preventDefault()
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    if (dragDepthRef.current === 0) setDragOverlay(false)
+  }
+  const handleRootDrop = (e: React.DragEvent) => {
+    if (!workspaceShown) return
+    e.preventDefault()
+    dragDepthRef.current = 0
+    setDragOverlay(false)
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) handleModelLoaded(reader.result, file.name)
+    }
+    reader.readAsArrayBuffer(file)
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', background: 'var(--bg-base)', overflow: 'hidden' }}>
+    <div
+      style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', background: 'var(--bg-base)', overflow: 'hidden' }}
+      onDragEnter={handleRootDragEnter}
+      onDragOver={handleRootDragOver}
+      onDragLeave={handleRootDragLeave}
+      onDrop={handleRootDrop}
+    >
       {(showDropzone || !isReady) && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 10 }}>
           <ModelDropzone
@@ -998,6 +1044,33 @@ function App() {
         </>
       )}
       {showShortcuts && <ShortcutsOverlay onClose={() => setShowShortcuts(false)} />}
+      {dragOverlay && (
+        <div
+          data-testid="drag-replace-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 3000,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            background: 'rgba(18,22,26,0.92)',
+            border: '2px dashed var(--color-amber)',
+            pointerEvents: 'none',
+          }}
+        >
+          <span style={{ color: 'var(--color-amber)', textTransform: 'uppercase', letterSpacing: '0.16em', fontSize: 15, fontFamily: 'var(--font-mono)' }}>
+            Drop to replace current model
+          </span>
+          {attrOverrides.size + structuralOps.length > 0 && (
+            <span style={{ color: 'var(--color-error)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+              Unsaved edits will be lost
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
