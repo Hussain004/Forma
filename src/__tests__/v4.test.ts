@@ -193,6 +193,6 @@ describe('App download button (v4)', () => {
     })
 
     await waitFor(() => expect(clickSpy).toHaveBeenCalled())
-    expect(anchor.download).toMatch(/^test_export\.onnx$/)
+    expect(anchor.download).toMatch(/^test_original\.onnx$/)
   })
 })

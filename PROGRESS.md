@@ -15,7 +15,7 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 - [ ] P0 Humanize the malformed-file error
 - [ ] P1 Self-host JetBrains Mono
 - [x] P1 Remove the dead reactflow 11 dependency and starter leftovers
-- [ ] P1 Rename "Download" and fix its filename
+- [x] P1 Rename "Download" and fix its filename
 - [x] P1 Fix dim-text contrast and micro type sizes
 - [ ] P1 Make shortcuts discoverable
 - [ ] P1 Benchmark warmup and running state
@@ -50,6 +50,8 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 ## Log
 
 (most recent first)
+
+- "Download" (which returns unmodified original bytes) renamed to "Download Original" with a clarifying title, and its filename suffix fixed from the misleading `_export.onnx` to `_original.onnx`. "Export Modified" now shows a live edit count, e.g. "Export Modified (3)", from `attrOverrides.size + structuralOps.length`.
 
 - Raised `--text-dim` from #4A4F5E (~2.2:1, WCAG fail) to #7A8191 (~4.5:1, WCAG AA pass) and pointed the hardcoded #5A6070 shape-label color and #3A4050 idle-pencil color at the same token instead of their own separate low-contrast values. Bumped MOD/NEW node badges from 7px to 9px and shape labels from 9px to 10px. Verified live: node shape labels ([1, 4]) went from barely visible to clearly legible.
 

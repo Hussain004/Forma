@@ -59,9 +59,10 @@ interface StatsBarProps {
   onReset: () => void
   isReadOnly: boolean
   onAddNode: (opType: string, inputCount: number) => void
+  editCount: number
 }
 
-function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, onDownload, canDownload, onDownloadModified, canDownloadModified, onReset, isReadOnly, onAddNode }: StatsBarProps) {
+function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, onDownload, canDownload, onDownloadModified, canDownloadModified, onReset, isReadOnly, onAddNode, editCount }: StatsBarProps) {
   const quantizeLabel = formatQuantizeEstimate(quantizeEstimate)
   const [showAddNode, setShowAddNode] = useState(false)
   const [addNodeQuery, setAddNodeQuery] = useState('')
@@ -279,17 +280,17 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
           </button>
         )}
         {canDownload && (
-          <button onClick={onDownload} className="btn-bar">
-            Download
+          <button onClick={onDownload} title="Download the unmodified original file" className="btn-bar">
+            Download Original
           </button>
         )}
         {canDownloadModified && (
           <button
             onClick={onDownloadModified}
-            title="Export the model with your attribute edits applied"
+            title="Export the model with your edits applied"
             className="btn-bar btn-primary"
           >
-            Export Modified
+            Export Modified ({editCount})
           </button>
         )}
         <button onClick={onReset} className="btn-bar btn-ghost">
@@ -741,7 +742,7 @@ function App() {
       const a = document.createElement('a')
       a.href = url
       const baseName = (graph?.modelName ?? 'model').replace(/\.[^.]+$/, '')
-      a.download = baseName + '_export.onnx'
+      a.download = baseName + '_original.onnx'
       a.click()
       URL.revokeObjectURL(url)
     })
@@ -828,6 +829,7 @@ function App() {
             onReset={handleReset}
             onAddNode={handleAddNode}
             isReadOnly={isReadOnly}
+            editCount={attrOverrides.size + structuralOps.length}
           />
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
             <div style={{ flex: 1, height: '100%' }}>
