@@ -185,6 +185,11 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
         <input
           ref={filterInputRef}
           type="text"
+          role="combobox"
+          aria-expanded={showDropdown && dropdownResults.length > 0}
+          aria-controls="search-dropdown"
+          aria-autocomplete="list"
+          aria-activedescendant={dropdownIndex >= 0 ? `search-result-${dropdownIndex}` : undefined}
           value={filterQuery}
           onChange={(e) => onFilterChange(e.target.value)}
           onKeyDown={onFilterKeyDown}
@@ -205,7 +210,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
           }}
         />
         {showDropdown && dropdownResults.length > 0 && (
-          <div data-testid="search-dropdown" role="listbox" style={{
+          <div id="search-dropdown" data-testid="search-dropdown" role="listbox" style={{
             position: 'absolute',
             top: '100%',
             left: 0,
@@ -221,6 +226,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
             {dropdownResults.map((node, i) => (
               <div
                 key={node.id}
+                id={`search-result-${i}`}
                 role="option"
                 aria-selected={i === dropdownIndex}
                 data-testid="search-result"

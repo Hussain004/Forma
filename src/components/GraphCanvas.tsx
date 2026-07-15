@@ -244,13 +244,18 @@ function toFlowGraph(
       : traceDescendants.has(n.id)
         ? 'descendant'
         : null
+    const label = isIO ? (n.outputs[0] ?? n.inputs[0] ?? n.opType) : n.opType
+    const ariaLabel = isIO
+      ? `${n.opType === 'Input' ? 'Input' : 'Output'} ${label}${shapeLabel ? `, shape ${shapeLabel}` : ''}`
+      : `${n.opType}${n.paramCount > 0 ? `, ${n.paramCount.toLocaleString()} params` : ', no params'}${n.excluded ? ', excluded from stats' : ''}`
     return {
       id: n.id,
       type: isIO ? 'io' : 'operator',
       position: { x: 0, y: 0 },
       selected: (n as SelectableNode).selected ?? (n.id === selectedNodeId),
+      ariaLabel,
       data: isIO
-        ? { label: n.outputs[0] ?? n.inputs[0] ?? n.opType, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive }
+        ? { label, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive }
         : { opType: n.opType, paramCount: n.paramCount, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive, isModified: n.isModified ?? false, isSynthetic: !ORIGINAL_NODE_ID_RE.test(n.id), inputCount: n.inputs.length },
     }
   })

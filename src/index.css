@@ -87,10 +87,44 @@ button.btn-danger:hover:not(:disabled) {
   outline: none;
 }
 
+/* Attribute values were a clickable div -- editable by mouse only, invisible
+   to a keyboard user and to screen readers as an interactive control. `all:
+   unset` strips the global button reset's uppercase/border/padding (wrong
+   for arbitrary attribute values) before re-adding just the layout this
+   needs. */
+button.attr-value-button {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  cursor: text;
+  box-sizing: border-box;
+}
+button.attr-value-button:focus-visible {
+  outline: 1px solid var(--color-amber);
+  outline-offset: 1px;
+  border-radius: 1px;
+}
+
 /* React Flow control overrides live in styles/theme.css -- this file used to
    carry a second, overlapping block for the same selectors, but theme.css's
    version (imported above) always won the cascade anyway (it uses
    !important), so this one was dead weight. */
+
+/* Nodes are keyboard-focusable (react-flow gives them tabIndex/arrow-key
+   movement out of the box) but had no visible focus state at all -- a
+   keyboard user tabbing through the canvas couldn't tell where they were.
+   react-flow's own stylesheet ships `.react-flow__node.selectable:focus-
+   visible { outline: none }`, a more specific selector than a bare
+   `.react-flow__node:focus-visible` -- !important guarantees this wins
+   regardless of stylesheet load order. */
+.react-flow__node:focus-visible {
+  outline: 1px solid var(--color-amber) !important;
+  outline-offset: 2px !important;
+}
 
 /* ---- Motion ----
    Structural edits (delete/insert/rewire/layout toggle) used to teleport:

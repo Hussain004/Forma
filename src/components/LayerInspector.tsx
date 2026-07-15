@@ -418,10 +418,13 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                     }}
                   />
                 ) : (
-                  <div
+                  <button
+                    type="button"
                     data-testid={`attr-value-${k}`}
-                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, cursor: 'text', minWidth: 0 }}
+                    className="attr-value-button"
+                    title={`Edit ${k}`}
                     onClick={() => startEdit(k, original)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') startEdit(k, original) }}
                     onMouseEnter={() => setHoveredAttr(k)}
                     onMouseLeave={() => setHoveredAttr(null)}
                   >
@@ -429,7 +432,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                       {String(v)}
                     </span>
                     <PencilIcon color={pencilColor} />
-                  </div>
+                  </button>
                 )}
               </div>
             )
@@ -527,11 +530,15 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                     Reconnect using
                   </div>
                   {deleteEligibility.candidateInputs.map((c) => (
-                    <div
+                    <button
                       key={c.position}
+                      type="button"
                       data-testid={`delete-picker-option-${c.position}`}
                       onClick={() => { onDeleteNode(node.id, c.position); setShowDeletePicker(false) }}
                       style={{
+                        textAlign: 'left',
+                        textTransform: 'none',
+                        letterSpacing: 'normal',
                         cursor: 'pointer',
                         padding: '4px 8px',
                         fontSize: 11,
@@ -543,7 +550,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                       }}
                     >
                       {c.tensorName}
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
