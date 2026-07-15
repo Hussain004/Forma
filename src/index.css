@@ -46,34 +46,53 @@ button:disabled:hover { border-color: var(--border-default); }
 
 /* Button hierarchy -- three tiers so importance reads at a glance instead of
    every action looking identical. Default `button` above is the secondary
-   tier (neutral outline); these are the other three. */
-button.btn-bar {
+   tier (neutral outline); these are the other three. Class selectors (not
+   button.btn-*) so an anchor styled as a button gets the identical treatment,
+   hover included -- a.btn-link below supplies the base chrome the `button`
+   element selector would otherwise provide. */
+.btn-link {
+  /* Class-only selector (not a.btn-link) so it stays at equal specificity
+     with .btn-ghost/.btn-primary below -- they must be able to override the
+     border-color set by this shorthand, exactly as they do for buttons. */
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border: var(--border-default);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-block;
+  transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+.btn-bar {
   padding: var(--space-2) var(--space-6);
   font-size: 13px;
   letter-spacing: 0.06em;
 }
-button.btn-ghost {
+.btn-ghost {
   border-color: transparent;
   color: var(--text-secondary);
 }
-button.btn-ghost:hover {
+.btn-ghost:hover {
   border-color: rgba(255, 255, 255, 0.2);
   color: var(--text-primary);
   background: rgba(255, 255, 255, 0.03);
 }
-button.btn-primary {
+.btn-primary {
   border-color: rgba(255, 176, 0, 0.4);
   color: var(--color-amber);
 }
-button.btn-primary:hover {
+.btn-primary:hover {
   border-color: var(--color-amber);
   background: rgba(255, 176, 0, 0.08);
 }
-button.btn-danger {
+.btn-danger {
   border-color: rgba(192, 57, 43, 0.4);
   color: var(--color-error);
 }
-button.btn-danger:hover:not(:disabled) {
+.btn-danger:hover:not(:disabled) {
   border-color: var(--color-error);
   background: rgba(192, 57, 43, 0.08);
 }

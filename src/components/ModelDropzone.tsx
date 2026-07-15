@@ -186,35 +186,63 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
       )}
 
       {(status === 'idle' || status === 'ready') && (
-        <>
-          <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: '0.04em', color: 'var(--text-primary)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {/* Identity block */}
+          <span style={{ fontSize: 34, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-primary)' }}>
             FOR<span style={{ color: 'var(--color-amber)' }}>M</span>A
           </span>
           <span
             style={{
               color: 'var(--text-secondary)',
               fontSize: 13,
+              lineHeight: 1.7,
               letterSpacing: '0.02em',
               textAlign: 'center',
-              maxWidth: 420,
-              marginTop: -8,
+              maxWidth: 460,
+              marginTop: 12,
             }}
           >
-            Visualize, edit, and re-export ONNX and TFLite models. Runs entirely in your browser --
-            your model never leaves this device.
+            Visualize, edit, and re-export ONNX and TFLite models.
+            <br />
+            Runs entirely in your browser -- your model never leaves this device.
           </span>
-          <Crosshair />
-          <span
+
+          {/* Drop region: a visible, bounded target instead of an invisible
+              full-screen one -- the whole page still accepts the drop/click,
+              this just gives the eye something to aim at. */}
+          <div
             style={{
-              color: 'var(--text-secondary)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.16em',
-              fontSize: 13,
+              marginTop: 48,
+              padding: '40px 72px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 20,
+              border: dragging ? '1px dashed var(--color-amber)' : '1px dashed rgba(255,255,255,0.15)',
+              borderRadius: 2,
+              transition: 'border-color 140ms ease',
             }}
           >
-            Drop .onnx or .tflite model
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 8 }}>
+            <Crosshair />
+            <span
+              style={{
+                color: 'var(--text-secondary)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.16em',
+                fontSize: 13,
+              }}
+            >
+              Drop .onnx or .tflite model
+            </span>
+            <span style={{ color: 'var(--text-dim)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              or click anywhere to browse
+            </span>
+          </div>
+
+          {/* Actions: identical ghost treatment for both so hover reads the
+              same -- the GitHub link used to be a bare anchor with no hover
+              state next to a bordered-on-hover button. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 32 }}>
             <button onClick={handleLoadSample} className="btn-bar btn-ghost">
               Load sample model
             </button>
@@ -223,18 +251,12 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
               target="_blank"
               rel="noreferrer"
               onClick={(e) => e.stopPropagation()}
-              style={{
-                color: 'var(--text-dim)',
-                fontSize: 12,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                textDecoration: 'none',
-              }}
+              className="btn-link btn-bar btn-ghost"
             >
               View on GitHub
             </a>
           </div>
-        </>
+        </div>
       )}
     </div>
   )
