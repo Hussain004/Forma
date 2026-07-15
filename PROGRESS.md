@@ -12,7 +12,7 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 - [x] P0 Real title and social meta tags
 - [ ] P0 Bundle a sample model
 - [ ] P0 Product identity on the empty state
-- [ ] P0 Humanize the malformed-file error
+- [x] P0 Humanize the malformed-file error
 - [ ] P1 Self-host JetBrains Mono
 - [x] P1 Remove the dead reactflow 11 dependency and starter leftovers
 - [x] P1 Rename "Download" and fix its filename
@@ -50,6 +50,8 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 ## Log
 
 (most recent first)
+
+- Malformed-file error now shows a short friendly headline ("This file doesn't look like a valid ONNX or TFLite model.") with the raw onnxruntime message demoted to a smaller, non-shouting sentence-case line underneath, instead of dumping the full ALL-CAPS ORT error as the primary message. Verified live against a real junk file.
 
 - "Download" (which returns unmodified original bytes) renamed to "Download Original" with a clarifying title, and its filename suffix fixed from the misleading `_export.onnx` to `_original.onnx`. "Export Modified" now shows a live edit count, e.g. "Export Modified (3)", from `attrOverrides.size + structuralOps.length`.
 

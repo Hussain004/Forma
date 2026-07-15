@@ -8,6 +8,19 @@ interface ModelDropzoneProps {
   progressPercent?: number | null
 }
 
+// onnxruntime and our own parsers surface technical, ALL-CAPS-hostile error
+// strings ("CAN'T CREATE A SESSION. ERROR_CODE: 7, ERROR_MESSAGE: FAILED TO
+// LOAD MODEL BECAUSE PROTOBUF PARSING FAILED."). Map the common shapes to a
+// short, human headline; the raw message stays visible underneath for anyone
+// who wants the detail (or needs it to file a bug).
+function friendlyErrorHeadline(raw: string | null | undefined): string {
+  const lower = (raw ?? '').toLowerCase()
+  if (lower.includes('protobuf parsing failed') || lower.includes("can't create a session") || lower.includes('failed to load model')) {
+    return "This file doesn't look like a valid ONNX or TFLite model."
+  }
+  return 'Something went wrong while loading this model.'
+}
+
 function Crosshair() {
   return (
     <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
@@ -132,8 +145,21 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
               maxWidth: 360,
             }}
           >
-            {error ?? 'Failed to parse model'}
+            {friendlyErrorHeadline(error)}
           </span>
+          {error && (
+            <span
+              style={{
+                color: 'var(--text-dim)',
+                letterSpacing: '0.02em',
+                fontSize: 11,
+                textAlign: 'center',
+                maxWidth: 420,
+              }}
+            >
+              {error}
+            </span>
+          )}
           <span
             style={{
               color: 'var(--text-dim)',
