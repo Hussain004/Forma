@@ -13,7 +13,7 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 - [ ] P0 Bundle a sample model
 - [ ] P0 Product identity on the empty state
 - [x] P0 Humanize the malformed-file error
-- [ ] P1 Self-host JetBrains Mono
+- [x] P1 Self-host JetBrains Mono
 - [x] P1 Remove the dead reactflow 11 dependency and starter leftovers
 - [x] P1 Rename "Download" and fix its filename
 - [x] P1 Fix dim-text contrast and micro type sizes
@@ -50,6 +50,8 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 ## Log
 
 (most recent first)
+
+- Vendored the JetBrains Mono latin subset (weights 300/400/500/700) into public/fonts/ and replaced the Google Fonts @import with local @font-face rules. Sourced the files from the @fontsource/jetbrains-mono npm package (proper licensing, no manual font wrangling), then uninstalled the package itself since only the static files were needed. Verified live: zero external hosts contacted on load (previously fonts.googleapis.com and fonts.gstatic.com), which makes the "your model never leaves the browser" pitch literally true.
 
 - Malformed-file error now shows a short friendly headline ("This file doesn't look like a valid ONNX or TFLite model.") with the raw onnxruntime message demoted to a smaller, non-shouting sentence-case line underneath, instead of dumping the full ALL-CAPS ORT error as the primary message. Verified live against a real junk file.
 
