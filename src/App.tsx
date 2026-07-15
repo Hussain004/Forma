@@ -65,12 +65,14 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
   const quantizeLabel = formatQuantizeEstimate(quantizeEstimate)
   const [showAddNode, setShowAddNode] = useState(false)
   const [addNodeQuery, setAddNodeQuery] = useState('')
+  const [addNodeInputCount, setAddNodeInputCount] = useState(1)
 
   const commitAddNode = (opType: string, inputCount: number) => {
     if (!opType.trim()) return
     onAddNode(opType.trim(), inputCount)
     setShowAddNode(false)
     setAddNodeQuery('')
+    setAddNodeInputCount(1)
   }
   return (
     <div style={{
@@ -204,8 +206,8 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
                     value={addNodeQuery}
                     onChange={(e) => setAddNodeQuery(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') { e.preventDefault(); commitAddNode(addNodeQuery, 1) }
-                      if (e.key === 'Escape') { setShowAddNode(false); setAddNodeQuery('') }
+                      if (e.key === 'Enter') { e.preventDefault(); commitAddNode(addNodeQuery, addNodeInputCount) }
+                      if (e.key === 'Escape') { setShowAddNode(false); setAddNodeQuery(''); setAddNodeInputCount(1) }
                     }}
                     onBlur={() => setTimeout(() => setShowAddNode(false), 150)}
                     placeholder="Op type..."
@@ -222,6 +224,34 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
                       borderRadius: 2,
                     }}
                   />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+                    <span style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Inputs
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button
+                        type="button"
+                        data-testid="add-node-input-count-dec"
+                        onMouseDown={(e) => { e.preventDefault(); setAddNodeInputCount((n) => Math.max(1, n - 1)) }}
+                        className="btn-ghost"
+                        style={{ padding: '0 6px', fontSize: 11, lineHeight: '16px' }}
+                      >
+                        -
+                      </button>
+                      <span data-testid="add-node-input-count" style={{ fontSize: 11, color: 'var(--text-primary)', minWidth: 10, textAlign: 'center' }}>
+                        {addNodeInputCount}
+                      </span>
+                      <button
+                        type="button"
+                        data-testid="add-node-input-count-inc"
+                        onMouseDown={(e) => { e.preventDefault(); setAddNodeInputCount((n) => Math.min(8, n + 1)) }}
+                        className="btn-ghost"
+                        style={{ padding: '0 6px', fontSize: 11, lineHeight: '16px' }}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                   {CURATED_NODE_TYPES.map(({ opType, inputCount }) => (
