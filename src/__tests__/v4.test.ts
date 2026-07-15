@@ -55,7 +55,7 @@ describe('useOnnxWorker exportModel rejection (v4)', () => {
       exportPromise = result.current.exportModel()
     })
     act(() => {
-      mockWorker.onmessage?.({ data: { type: 'ERROR', payload: 'no model loaded' } } as MessageEvent)
+      mockWorker.onmessage?.({ data: { type: 'ERROR', payload: 'no model loaded', scope: 'operation' } } as MessageEvent)
     })
     await expect(exportPromise).rejects.toThrow('no model loaded')
   }, 2000)
@@ -67,7 +67,7 @@ describe('useOnnxWorker exportModel rejection (v4)', () => {
       exportPromise = result.current.exportModel()
     })
     act(() => {
-      mockWorker.onmessage?.({ data: { type: 'ERROR', payload: 'export failed' } } as MessageEvent)
+      mockWorker.onmessage?.({ data: { type: 'ERROR', payload: 'export failed', scope: 'operation' } } as MessageEvent)
     })
     await expect(exportPromise).rejects.toBeInstanceOf(Error)
   }, 2000)
@@ -79,7 +79,7 @@ describe('useOnnxWorker exportModel rejection (v4)', () => {
       exportPromise = result.current.exportModel()
     })
     act(() => {
-      mockWorker.onmessage?.({ data: { type: 'ERROR', payload: 'boom' } } as MessageEvent)
+      mockWorker.onmessage?.({ data: { type: 'ERROR', payload: 'boom', scope: 'operation' } } as MessageEvent)
     })
     const outcome = await Promise.race([
       exportPromise.then(() => 'resolved', () => 'rejected'),

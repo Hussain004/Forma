@@ -29,8 +29,8 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 ## Medium Effort
 
 - [x] P0 Decouple graph rendering from WASM session creation
-- [ ] P0 Stop operation errors from destroying the workspace
-- [ ] P0 An annunciator line for silent actions
+- [x] P0 Stop operation errors from destroying the workspace
+- [x] P0 An annunciator line for silent actions
 - [ ] P1 Accept a dropped model anytime
 - [ ] P1 Motion system: CSS only, glide not bounce
 - [ ] P1 Layer Inspector information architecture
@@ -50,6 +50,8 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 ## Log
 
 (most recent first)
+
+- Implemented together since one needs the other: worker ERROR messages now carry a `scope: 'load' | 'operation'` tag (LOAD_MODEL failures vs everything else). Load errors keep the existing full-screen dropzone/error behavior; operation errors (a failed benchmark, export, or inference) now keep the loaded graph mounted and status at 'ready' instead of tearing the whole workspace down for what might just be a transient WASM hiccup. A new always-present 22px status strip under the StatsBar (an "annunciator line," not a floating toast, per the audit's explicit design note) surfaces operation errors plus several previously-silent actions: rejected rewires (with the real reason -- self-connect, cycle, wrong node type), bulk-delete skip counts when nodes were ambiguous/ineligible, undo confirmations naming what was undone, and a copy confirmation. Verified live: self-connecting a node's output to its own input shows "Rewire rejected: Cannot connect a node to itself", Ctrl+Z after an attribute edit shows "Undid kernel_shape edit", and COPY shows "Copied to clipboard" -- all in the strip, with the graph staying fully interactive throughout.
 
 - The single highest-impact fix in the whole list: `onnxWorker.ts` used to post `MODEL_LOADED` only after `ort.InferenceSession.create` resolved, so first paint of the graph waited on a full WASM runtime download+compile even though the graph itself was already parsed. The original live-site audit measured this at roughly 60 seconds over a real network. Session creation is now lazy (`ensureSession()`), triggered only by the first Benchmark click or inference call, from the same retained `exportBuffer` bytes. Verified live: graph now renders in ~120ms after picking a file (session doesn't exist yet), Benchmark still works correctly on first click (lazy creation succeeds, warmup+median intact), and switching to a second model correctly resets and recreates the session rather than reusing a stale one (added an explicit `session = null` reset in the LOAD_MODEL handler, since the module-level session variable used to only ever get reassigned, never cleared).
 

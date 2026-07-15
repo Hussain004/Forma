@@ -20,7 +20,12 @@ type WorkerResponse =
   | { type: 'BENCHMARK_RESULT'; payload: { avgMs: number; medianMs: number; minMs: number; maxMs: number; runs: number } }
   | { type: 'QUANTIZE_ESTIMATE'; payload: { int8SizeMB: number; originalSizeMB: number; ratio: number } }
   | { type: 'EXPORT_RESULT'; payload: ArrayBuffer }
-  | { type: 'ERROR'; payload: string }
+  // scope distinguishes a failed LOAD_MODEL (nothing usable exists yet, the
+  // dropzone/error screen is the right response) from a failed operation on an
+  // already-loaded model (benchmark/inference/export) -- the loaded graph and
+  // any pending edits are still perfectly good and shouldn't be torn down for
+  // a benchmark hiccup. See useOnnxWorker.ts for how each scope is handled.
+  | { type: 'ERROR'; payload: string; scope: 'load' | 'operation' }
   | { type: 'PROGRESS'; payload: { stage: string; percent: number } }
 
 const ctx = self as unknown as {
@@ -156,6 +161,6 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
       ctx.postMessage({ type: 'EXPORT_RESULT', payload: patched }, [patched])
     }
   } catch (err) {
-    ctx.postMessage({ type: 'ERROR', payload: (err as Error).message })
+    ctx.postMessage({ type: 'ERROR', payload: (err as Error).message, scope: cmd.type === 'LOAD_MODEL' ? 'load' : 'operation' })
   }
 }

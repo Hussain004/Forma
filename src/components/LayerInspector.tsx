@@ -31,6 +31,7 @@ interface LayerInspectorProps {
   onAttrEdit?: (nodeId: string, attrName: string, value: string | number) => void
   onDeleteNode?: (nodeId: string, keepInputPosition: number | null) => void
   deleteEligibility?: DeleteEligibility
+  onCopy?: () => void
 }
 
 const bulkButtonStyle: React.CSSProperties = {
@@ -117,7 +118,7 @@ function sensitivityColor(params: number): string {
   return '#52C57A'
 }
 
-export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onBulkDelete, onAttrEdit, onDeleteNode, deleteEligibility }: LayerInspectorProps) {
+export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onBulkDelete, onAttrEdit, onDeleteNode, deleteEligibility, onCopy }: LayerInspectorProps) {
   const [editingAttr, setEditingAttr] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [hoveredAttr, setHoveredAttr] = useState<string | null>(null)
@@ -301,7 +302,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
     if (attrs.length > 0) attrs.forEach(([k, v]) => lines.push(`${k}: ${v}`))
     if (node.inputs.length > 0) lines.push(`Inputs:     ${node.inputs.join(', ')}`)
     if (node.outputs.length > 0) lines.push(`Outputs:    ${node.outputs.join(', ')}`)
-    navigator.clipboard.writeText(lines.join('\n')).catch(() => {})
+    navigator.clipboard.writeText(lines.join('\n')).then(() => onCopy?.()).catch(() => {})
   }
 
   function startEdit(attrName: string, current: string | number) {

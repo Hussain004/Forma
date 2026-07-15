@@ -363,7 +363,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
 }
 
 function App() {
-  const { loadModel, runBenchmark, exportModel, exportModifiedModel, graph, status, error, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
+  const { loadModel, runBenchmark, exportModel, exportModifiedModel, graph, status, error, operationError, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
   // TFLite support is read-only: no inference session ever exists for it (no TFLite
   // runtime in this project), so attribute/structural editing, Benchmark, and Export
   // Modified are all withheld for it -- see tfliteParser.ts and onnxWorker.ts.
@@ -384,6 +384,8 @@ function App() {
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [pendingNodeType, setPendingNodeType] = useState<{ opType: string; inputCount: number } | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [announcement, setAnnouncement] = useState<{ text: string; tone: 'reject' | 'info' } | null>(null)
+  const announceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const filterInputRef = useRef<HTMLInputElement>(null)
   const undoStackRef = useRef(undoStack)
   undoStackRef.current = undoStack
@@ -437,6 +439,21 @@ function App() {
     if (graph) setShowDropzone(false)
   }, [graph])
 
+  // Avionics-annunciator-style status line: a single line of feedback for
+  // actions that were previously silent (a rejected rewire, nodes skipped
+  // during bulk delete, a completed undo/copy) or destructive-looking
+  // (a failed benchmark/export that no longer tears down the workspace,
+  // see operationError below), auto-clearing after a few seconds.
+  const announce = (text: string, tone: 'reject' | 'info' = 'info') => {
+    if (announceTimeoutRef.current) clearTimeout(announceTimeoutRef.current)
+    setAnnouncement({ text, tone })
+    announceTimeoutRef.current = setTimeout(() => setAnnouncement(null), 4000)
+  }
+
+  useEffect(() => {
+    if (operationError) announce(operationError.message, 'reject')
+  }, [operationError])
+
   // Shared by the Delete keyboard shortcut and the "Delete all" bulk button --
   // covers a single selected node too, since selectedNodeIds always contains the
   // primary selection (see applySelection). Only unambiguous nodes (dead-end or a
@@ -458,7 +475,14 @@ function App() {
       newOps.push({ type: 'delete', nodeId, nodeIndex, keepInputPosition })
       newUndo.push({ kind: 'structural' })
     }
-    if (newOps.length === 0) return
+    const skipped = ids.size - newOps.length
+    if (newOps.length === 0) {
+      announce(`${skipped} of ${ids.size} node${ids.size === 1 ? '' : 's'} skipped: ambiguous or ineligible`, 'reject')
+      return
+    }
+    if (skipped > 0) {
+      announce(`Deleted ${newOps.length} of ${ids.size} -- ${skipped} skipped: ambiguous or ineligible`, 'reject')
+    }
     setStructuralOps(prev => [...prev, ...newOps])
     setUndoStack(prev => [...prev, ...newUndo])
     setSelectedNodeId(null)
@@ -482,10 +506,12 @@ function App() {
             next.set(last.nodeId, existing)
             return next
           })
+          announce(`Undid ${last.attrName} edit`)
         } else {
           // Structural ops are strict append-order, so popping the last undo
           // entry and the last op always correspond, regardless of delete/insert.
           setStructuralOps(prev => prev.slice(0, -1))
+          announce('Undid last structural edit')
         }
         return
       }
@@ -738,7 +764,10 @@ function App() {
   const handleRewire = (sourceNodeId: string, targetNodeId: string, inputPosition: number) => {
     if (!graphWithStructuralEdits) return
     const validation = validateRewire(graphWithStructuralEdits, sourceNodeId, targetNodeId, inputPosition)
-    if (!validation.valid) return
+    if (!validation.valid) {
+      announce(`Rewire rejected: ${validation.reason ?? 'invalid connection'}`, 'reject')
+      return
+    }
     const sourceNodeIndex = structuralNodeIndex(sourceNodeId)
     const targetNodeIndex = structuralNodeIndex(targetNodeId)
     if (sourceNodeIndex === null || targetNodeIndex === null) return
@@ -905,6 +934,27 @@ function App() {
             isReadOnly={isReadOnly}
             editCount={attrOverrides.size + structuralOps.length}
           />
+          <div
+            data-testid="announcement"
+            role="status"
+            aria-live="polite"
+            style={{
+              height: 22,
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0 24px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              letterSpacing: '0.04em',
+              background: '#0E1114',
+              borderBottom: announcement ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
+              color: announcement?.tone === 'reject' ? 'var(--color-error)' : 'var(--color-amber)',
+              transition: 'color 140ms ease, border-color 140ms ease',
+            }}
+          >
+            {announcement?.text ?? ''}
+          </div>
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
             <div style={{ flex: 1, height: '100%' }}>
               <GraphCanvas
@@ -941,7 +991,7 @@ function App() {
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               />
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} />
+                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} onCopy={() => announce('Copied to clipboard')} />
               </div>
             </div>
           </div>

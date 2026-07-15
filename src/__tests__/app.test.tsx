@@ -104,16 +104,36 @@ describe('App -- model load flow', () => {
     expect(screen.queryByText(/select a node/i)).not.toBeInTheDocument()
   })
 
-  it('shows error state when worker sends ERROR', () => {
+  it('shows error state when worker sends a load-scoped ERROR', () => {
     render(<App />)
 
     act(() => {
       mockWorker.onmessage?.({
-        data: { type: 'ERROR', payload: 'Failed to parse model' },
+        data: { type: 'ERROR', payload: 'Failed to parse model', scope: 'load' },
       } as MessageEvent)
     })
 
     expect(screen.getByText(/failed to parse model/i)).toBeInTheDocument()
+  })
+
+  it('keeps the loaded graph mounted when an operation-scoped ERROR arrives', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+
+    act(() => {
+      mockWorker.onmessage?.({
+        data: { type: 'ERROR', payload: 'benchmark failed', scope: 'operation' },
+      } as MessageEvent)
+    })
+
+    // The graph stays mounted -- a failed benchmark shouldn't replace the
+    // workspace with the full-screen dropzone/error screen. The message
+    // still reaches the user, just via the annunciator line, not a teardown.
+    expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    expect(screen.getByTestId('announcement')).toHaveTextContent(/benchmark failed/i)
   })
 })
 

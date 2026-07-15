@@ -293,7 +293,7 @@ describe('useOnnxWorker message handling', () => {
     const { result } = renderHook(() => useOnnxWorker())
     act(() => { result.current.loadModel(new ArrayBuffer(8), 'model.onnx') })
     act(() => {
-      mockWorker.onmessage?.({ data: { type: 'ERROR', payload: 'failed to parse' } } as MessageEvent)
+      mockWorker.onmessage?.({ data: { type: 'ERROR', payload: 'failed to parse', scope: 'load' } } as MessageEvent)
     })
     expect(result.current.status).toBe('error')
     expect(result.current.error).toBe('failed to parse')
