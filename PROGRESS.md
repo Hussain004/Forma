@@ -28,7 +28,7 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 
 ## Medium Effort
 
-- [ ] P0 Decouple graph rendering from WASM session creation
+- [x] P0 Decouple graph rendering from WASM session creation
 - [ ] P0 Stop operation errors from destroying the workspace
 - [ ] P0 An annunciator line for silent actions
 - [ ] P1 Accept a dropped model anytime
@@ -50,6 +50,8 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 ## Log
 
 (most recent first)
+
+- The single highest-impact fix in the whole list: `onnxWorker.ts` used to post `MODEL_LOADED` only after `ort.InferenceSession.create` resolved, so first paint of the graph waited on a full WASM runtime download+compile even though the graph itself was already parsed. The original live-site audit measured this at roughly 60 seconds over a real network. Session creation is now lazy (`ensureSession()`), triggered only by the first Benchmark click or inference call, from the same retained `exportBuffer` bytes. Verified live: graph now renders in ~120ms after picking a file (session doesn't exist yet), Benchmark still works correctly on first click (lazy creation succeeds, warmup+median intact), and switching to a second model correctly resets and recreates the session rather than reusing a stale one (added an explicit `session = null` reset in the LOAD_MODEL handler, since the module-level session variable used to only ever get reassigned, never cleared).
 
 - Replaced the static og-image.png mockup (built before a sample model existed) with a real screenshot of the app running the actual bundled sample model -- closes the gap noted in the very first log entry.
 
