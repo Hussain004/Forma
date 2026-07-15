@@ -32,6 +32,20 @@ function formatNumber(n: number): string {
   return String(n)
 }
 
+// Renders both a full ("2.4M PARAMS") and compact ("2.4M") variant as two
+// complete, separate text nodes rather than nesting the unit word inside a
+// conditionally-hidden child span -- the latter reads fine visually but
+// breaks plain-string test queries, since testing-library's default text
+// matcher doesn't concatenate text split across element boundaries.
+function StatValue({ value, unit, title }: { value: string; unit: string; title: string }) {
+  return (
+    <span style={{ flexShrink: 0 }} title={title}>
+      <span className="stat-full">{value} {unit}</span>
+      <span className="stat-compact" aria-hidden="true">{value}</span>
+    </span>
+  )
+}
+
 const SHORTCUTS: [string, string][] = [
   ['/', 'Focus the node filter'],
   ['Click', 'Select a node'],
@@ -127,6 +141,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
   const [showAddNode, setShowAddNode] = useState(false)
   const [addNodeQuery, setAddNodeQuery] = useState('')
   const [addNodeInputCount, setAddNodeInputCount] = useState(1)
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false)
 
   const commitAddNode = (opType: string, inputCount: number) => {
     if (!opType.trim()) return
@@ -136,7 +151,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
     setAddNodeInputCount(1)
   }
   return (
-    <div style={{
+    <div className="stats-bar" style={{
       height: 52,
       background: '#0E1114',
       borderBottom: '1px solid rgba(255,255,255,0.1)',
@@ -150,23 +165,23 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
       flexShrink: 0,
       letterSpacing: '0.06em',
     }}>
-      <span style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ color: 'var(--text-primary)', fontWeight: 500, flex: '1 1 120px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={modelName}>
         {modelName}
       </span>
       {isReadOnly && (
-        <span style={{ fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-dim)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: 2, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+        <span style={{ flexShrink: 0, fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-dim)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: 2, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
           TFLite read-only
         </span>
       )}
-      <span>{formatNumber(totalParams)} PARAMS</span>
-      <span>{totalSizeMB.toFixed(1)} MB</span>
+      <StatValue value={formatNumber(totalParams)} unit="PARAMS" title="Total parameters" />
+      <StatValue value={totalSizeMB.toFixed(1)} unit="MB" title="Estimated size" />
       {quantizeLabel && (
-        <span style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 13, letterSpacing: '0.06em' }}>
+        <span style={{ flexShrink: 0, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 13, letterSpacing: '0.06em' }}>
           {quantizeLabel}
         </span>
       )}
-      <span>{nodeCount} {nodeCount === 1 ? 'NODE' : 'NODES'}</span>
-      <div style={{ position: 'relative' }}>
+      <StatValue value={String(nodeCount)} unit={nodeCount === 1 ? 'NODE' : 'NODES'} title="Node count" />
+      <div style={{ position: 'relative', flexShrink: 0 }}>
         <input
           ref={filterInputRef}
           type="text"
@@ -233,7 +248,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
           </div>
         )}
       </div>
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, paddingLeft: 24, borderLeft: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ marginLeft: 'auto', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, paddingLeft: 24, borderLeft: '1px solid rgba(255,255,255,0.08)' }}>
         <button
           onClick={onLayoutToggle}
           title="Toggle top-to-bottom / left-to-right layout"
@@ -332,19 +347,6 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
             )}
           </div>
         )}
-        {!isReadOnly && benchmarkLabel && (
-          <span style={{ color: 'var(--color-green)' }}>{benchmarkLabel}</span>
-        )}
-        {!isReadOnly && (
-          <button onClick={onBenchmark} disabled={isBenchmarking} className="btn-bar">
-            {isBenchmarking ? 'Running' : 'Benchmark'}
-          </button>
-        )}
-        {canDownload && (
-          <button onClick={onDownload} title="Download the unmodified original file" className="btn-bar">
-            Download Original
-          </button>
-        )}
         {canDownloadModified && (
           <button
             onClick={onDownloadModified}
@@ -354,9 +356,86 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
             Export Modified ({editCount})
           </button>
         )}
-        <button onClick={onReset} className="btn-bar btn-ghost">
-          Load new
-        </button>
+
+        {/* Below ~1100px (container width, accounts for the resizable inspector
+            panel) this group collapses into a single overflow menu -- Export
+            Modified above stays put either way, it's the primary action. */}
+        <div className="statsbar-full-actions" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {!isReadOnly && benchmarkLabel && (
+            <span style={{ color: 'var(--color-green)' }}>{benchmarkLabel}</span>
+          )}
+          {!isReadOnly && (
+            <button onClick={onBenchmark} disabled={isBenchmarking} className="btn-bar">
+              {isBenchmarking ? 'Running' : 'Benchmark'}
+            </button>
+          )}
+          {canDownload && (
+            <button onClick={onDownload} title="Download the unmodified original file" className="btn-bar">
+              Download Original
+            </button>
+          )}
+          <button onClick={onReset} className="btn-bar btn-ghost">
+            Load new
+          </button>
+        </div>
+        <div className="statsbar-collapsed-actions" style={{ position: 'relative' }}>
+          <button
+            onClick={() => setShowOverflowMenu(v => !v)}
+            onBlur={() => setTimeout(() => setShowOverflowMenu(false), 150)}
+            title="More actions"
+            className="btn-bar btn-ghost"
+          >
+            ...
+          </button>
+          {showOverflowMenu && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              right: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'stretch',
+              width: 180,
+              background: 'var(--bg-raised)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 2,
+              zIndex: 1000,
+              marginTop: 4,
+              padding: 4,
+              gap: 2,
+            }}>
+              {!isReadOnly && benchmarkLabel && (
+                <span style={{ color: 'var(--color-green)', fontSize: 10, padding: '4px 8px' }}>{benchmarkLabel}</span>
+              )}
+              {!isReadOnly && (
+                <button
+                  onClick={() => { onBenchmark(); setShowOverflowMenu(false) }}
+                  disabled={isBenchmarking}
+                  className="btn-ghost"
+                  style={{ textAlign: 'left', padding: '6px 8px' }}
+                >
+                  {isBenchmarking ? 'Running' : 'Benchmark'}
+                </button>
+              )}
+              {canDownload && (
+                <button
+                  onClick={() => { onDownload(); setShowOverflowMenu(false) }}
+                  className="btn-ghost"
+                  style={{ textAlign: 'left', padding: '6px 8px' }}
+                >
+                  Download Original
+                </button>
+              )}
+              <button
+                onClick={() => { onReset(); setShowOverflowMenu(false) }}
+                className="btn-ghost"
+                style={{ textAlign: 'left', padding: '6px 8px' }}
+              >
+                Load new
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
