@@ -131,10 +131,11 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
             }}
           >
             <div
+              className="loading-fill-shimmer"
               style={{
                 height: '100%',
                 width: `${progressPercent ?? 0}%`,
-                background: 'var(--color-amber)',
+                backgroundColor: 'var(--color-amber)',
                 borderRadius: 2,
                 transition: 'width 0.3s ease',
               }}
