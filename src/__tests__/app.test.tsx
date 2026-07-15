@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, act, fireEvent } from '@testing-library/react'
+import { render, screen, act, fireEvent, waitFor } from '@testing-library/react'
 import App from '../App'
 import type { OnnxGraph } from '../lib/onnxTypes'
 
@@ -50,6 +50,26 @@ describe('App -- initial state', () => {
   it('does not render the graph canvas before a model is loaded', () => {
     render(<App />)
     expect(screen.queryByTestId('graph-canvas')).not.toBeInTheDocument()
+  })
+
+  it('loads the bundled sample model via fetch when "Load sample model" is clicked', async () => {
+    const sampleBytes = new ArrayBuffer(8)
+    const fetchMock = vi.fn().mockResolvedValue({ arrayBuffer: () => Promise.resolve(sampleBytes) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: /load sample model/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/sample-model.onnx'))
+    await waitFor(() =>
+      expect(mockWorker.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'LOAD_MODEL',
+          payload: expect.objectContaining({ filename: 'sample-model.onnx' }),
+        }),
+        expect.anything(),
+      ),
+    )
   })
 })
 

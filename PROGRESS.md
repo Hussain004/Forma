@@ -10,8 +10,8 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 ## Quick Wins
 
 - [x] P0 Real title and social meta tags
-- [ ] P0 Bundle a sample model
-- [ ] P0 Product identity on the empty state
+- [x] P0 Bundle a sample model
+- [x] P0 Product identity on the empty state
 - [x] P0 Humanize the malformed-file error
 - [x] P1 Self-host JetBrains Mono
 - [x] P1 Remove the dead reactflow 11 dependency and starter leftovers
@@ -50,6 +50,8 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 ## Log
 
 (most recent first)
+
+- Bundled a small (1.2 KB) hand-encoded sample model at public/sample-model.onnx -- a real, runnable 6-node conv classifier (Conv -> Relu -> MaxPool -> Reshape -> Gemm -> Softmax) chosen specifically to hit five distinct op categories at once, so the first thing a new visitor loads showcases the category-color legend instead of a single gray/green node. Verified it both loads and actually runs through onnxruntime-web's Benchmark, not just parses. The empty state now also has a FORMA wordmark, a one-line pitch (the "never leaves this device" privacy claim only became literally true after the font self-hosting fix earlier), a "Load sample model" button wired to fetch + the same onModelLoaded path as a real drop, and a GitHub link -- previously a first-time visitor with no .onnx file handy had zero path forward and would just bounce off a bare "drop .onnx or .tflite model" line.
 
 - Added a `?`-toggled keyboard shortcuts overlay listing all seven existing shortcuts (`/`, click, Ctrl+Click, drag-to-rewire, Delete, Ctrl+Z, Esc), closable via Esc or a Close button. Filter input placeholder now reads "FILTER NODES  /" with a title attribute, and the default Layer Inspector panel (Model Summary, shown whenever no node is selected) gets a "Click a node to inspect. Press ? for shortcuts." hint line. None of these shortcuts were new -- they existed since earlier versions but had zero in-app discoverability.
 - Benchmark now runs 2 untimed warmup iterations before the 10 timed runs (the first run after a model loads pays for JIT/allocator warmup that skewed avg/max), reports median alongside avg/min/max, and annotates the label with "batch 1, zeroed inputs" so the numbers aren't mistaken for something more rigorous than they are. Button disables and reads "Running" while in flight. New deterministic test (the tiny fixture completes benchmarking too fast for a wall-clock Playwright check to ever catch the in-flight state, so verified via a mock-worker unit test instead of live).
