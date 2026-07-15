@@ -210,6 +210,7 @@ interface GraphCanvasProps {
   selectedNodeId: string | null
   onNodeSelect: (nodeId: string) => void
   onNodeCtrlClick?: (nodeId: string) => void
+  onBoxSelect?: (nodeIds: string[]) => void
   onEdgeClick?: (targetNodeId: string, tensorName: string) => void
   onRewire?: (sourceNodeId: string, targetNodeId: string, inputPosition: number) => void
   pendingNodeType?: { opType: string; inputCount: number } | null
@@ -303,7 +304,7 @@ function JumpController({ jumpToNodeId }: { jumpToNodeId?: string | null }) {
 
 const EMPTY_TRACE: Set<string> = new Set()
 
-export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, onEdgeClick, onRewire, pendingNodeType, onPlaceNode, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE, layoutDir = 'TB' }: GraphCanvasProps) {
+export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, onBoxSelect, onEdgeClick, onRewire, pendingNodeType, onPlaceNode, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE, layoutDir = 'TB' }: GraphCanvasProps) {
   const computed = useMemo(
     () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir),
     [onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir],
@@ -364,6 +365,16 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
         nodeTypes={nodeTypes}
         onInit={(instance) => { reactFlowInstanceRef.current = instance }}
         onViewportChange={(viewport) => setZoom(viewport.zoom)}
+        // Shift+drag box-select works already (react-flow's own default:
+        // holding selectionKeyCode disables panOnDrag and turns the drag into
+        // a selection box) -- this just syncs the result into App's selection
+        // state. onSelectionEnd (not onSelectionChange) deliberately: it only
+        // fires for the drag-box gesture, not for ordinary clicks, so it can't
+        // fight the existing onNodeClick-driven select/ctrl-select path.
+        onSelectionEnd={() => {
+          const current = reactFlowInstanceRef.current?.getNodes() ?? []
+          onBoxSelect?.(current.filter((n) => n.selected).map((n) => n.id))
+        }}
         onNodeClick={(event, node) => {
           setEdgePopover(null)
           if (event.ctrlKey || event.metaKey) {

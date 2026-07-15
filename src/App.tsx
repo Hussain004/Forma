@@ -50,6 +50,7 @@ const SHORTCUTS: [string, string][] = [
   ['/', 'Focus the node filter'],
   ['Click', 'Select a node'],
   ['Ctrl+Click', 'Multi-select nodes'],
+  ['Shift+Drag', 'Box-select multiple nodes'],
   ['Drag handle to handle', 'Rewire a connection'],
   ['Delete', 'Delete the selected node(s)'],
   ['Ctrl+Z', 'Undo the last edit'],
@@ -793,6 +794,13 @@ function App() {
     applySelection(next, primary)
   }
 
+  // Fired once when a Shift+drag selection box completes (see GraphCanvas's
+  // onSelectionEnd) -- an empty box (nothing under it) clears the selection,
+  // matching the usual click-on-empty-space-to-deselect convention.
+  const handleBoxSelect = (nodeIds: string[]) => {
+    applySelection(new Set(nodeIds), nodeIds[0] ?? null)
+  }
+
   const handleBulkExclude = () => {
     setExcludedNodeIds((prev) => new Set([...prev, ...selectedNodeIds]))
     setSelectableGraph((sg) => (sg ? bulkExclude(sg, selectedNodeIds) : sg))
@@ -1105,6 +1113,7 @@ function App() {
                 selectedNodeId={selectedNodeId}
                 onNodeSelect={handleNodeSelect}
                 onNodeCtrlClick={handleNodeCtrlClick}
+                onBoxSelect={handleBoxSelect}
                 onEdgeClick={isReadOnly ? undefined : handleEdgeClick}
                 onRewire={isReadOnly ? undefined : handleRewire}
                 pendingNodeType={isReadOnly ? null : pendingNodeType}
