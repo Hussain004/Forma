@@ -313,6 +313,10 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
   // actually render at -- without this it stays a fixed screen size while the
   // placed node scales with the viewport, so the two visibly disagree.
   const [zoom, setZoom] = useState(1)
+  // A plain click on an edge used to insert a passthrough node immediately --
+  // no confirmation, no indication edges were even clickable. Now a click
+  // opens this popover; only its own button commits the insert.
+  const [edgePopover, setEdgePopover] = useState<{ edgeId: string; targetNodeId: string; tensorName: string; x: number; y: number } | null>(null)
   // ReactFlowInstance.screenToFlowPosition is only reachable via useReactFlow(),
   // which requires being a descendant of <ReactFlow>'s own provider (see
   // JumpController above) -- GraphCanvas itself is the ancestor that renders
@@ -326,6 +330,21 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
 
   const hoveredNode = hoveredNodeId ? onnxNodes.find((n) => n.id === hoveredNodeId) : null
 
+  useEffect(() => {
+    if (!edgePopover) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setEdgePopover(null)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [edgePopover])
+
+  // Thickens the edge the popover is currently open for so the selection
+  // reads as deliberate rather than just another same-colored line.
+  const displayEdges = edgePopover
+    ? edges.map((e) => (e.id === edgePopover.edgeId ? { ...e, style: { ...e.style, strokeWidth: 2.5 } } : e))
+    : edges
+
   return (
     <div
       style={{ width: '100%', height: '100%', cursor: pendingNodeType ? 'crosshair' : undefined }}
@@ -334,25 +353,27 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
     >
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={displayEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         onInit={(instance) => { reactFlowInstanceRef.current = instance }}
         onViewportChange={(viewport) => setZoom(viewport.zoom)}
         onNodeClick={(event, node) => {
+          setEdgePopover(null)
           if (event.ctrlKey || event.metaKey) {
             onNodeCtrlClick?.(node.id)
           } else {
             onNodeSelect(node.id)
           }
         }}
-        onEdgeClick={(_event, edge) => {
+        onEdgeClick={(event, edge) => {
           // The React Flow edge's `label` field is repurposed to show the tensor
           // shape (only when adjacent to the selection), not the tensor name --
           // resolve the real name from the original OnnxEdge with the same id.
           const original = onnxEdges.find((e) => e.id === edge.id)
-          if (original?.label) onEdgeClick?.(edge.target, original.label)
+          if (!original?.label) return
+          setEdgePopover({ edgeId: edge.id, targetNodeId: edge.target, tensorName: original.label, x: event.clientX, y: event.clientY })
         }}
         onConnect={(connection) => {
           const match = connection.targetHandle ? /^in-(\d+)$/.exec(connection.targetHandle) : null
@@ -360,6 +381,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
           onRewire?.(connection.source, connection.target, Number(match[1]))
         }}
         onPaneClick={(event) => {
+          setEdgePopover(null)
           if (!pendingNodeType) return
           const flowPos = reactFlowInstanceRef.current?.screenToFlowPosition({ x: event.clientX, y: event.clientY })
           if (!flowPos) return
@@ -399,6 +421,40 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
         />
         <JumpController jumpToNodeId={jumpToNodeId} />
       </ReactFlow>
+      {edgePopover && (
+        <div
+          data-testid="edge-insert-popover"
+          style={{
+            position: 'fixed',
+            left: edgePopover.x + 10,
+            top: edgePopover.y + 10,
+            background: 'var(--bg-raised)',
+            border: '1px solid rgba(255,176,0,0.3)',
+            borderRadius: 2,
+            padding: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            fontFamily: 'var(--font-mono)',
+            zIndex: 1500,
+          }}
+        >
+          <span style={{ color: 'var(--text-secondary)', fontSize: 11, letterSpacing: '0.02em', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {edgePopover.tensorName}
+          </span>
+          <button
+            data-testid="edge-insert-confirm"
+            onClick={() => {
+              onEdgeClick?.(edgePopover.targetNodeId, edgePopover.tensorName)
+              setEdgePopover(null)
+            }}
+            className="btn-bar btn-primary"
+            style={{ fontSize: 10, padding: '3px 8px', whiteSpace: 'nowrap' }}
+          >
+            Insert passthrough
+          </button>
+        </div>
+      )}
       {pendingNodeType && cursorPos && (
         <div
           data-testid="add-node-ghost"

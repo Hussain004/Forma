@@ -825,16 +825,27 @@ function App() {
   // synthetic passthrough source/target is a deliberate scope boundary -- chaining
   // edits onto a generated passthrough would require resolving ops against ops
   // rather than always against the original model.
+  // Called from the confirm button in GraphCanvas's edge-click popover, not
+  // from the raw click itself -- inserting a node used to happen on a single
+  // unlabeled click, which both mutated the model with zero warning and was
+  // undiscoverable as a feature in the first place.
   const handleEdgeClick = (targetNodeId: string, tensorName: string) => {
     if (!graphWithStructuralEdits) return
-    if (structuralNodeIndex(targetNodeId) === null) return
+    if (structuralNodeIndex(targetNodeId) === null) {
+      announce('Cannot insert here: not an editable target', 'reject')
+      return
+    }
     const targetNode = graphWithStructuralEdits.nodes.find(n => n.id === targetNodeId)
     if (!targetNode) return
     const inputPosition = targetNode.inputs.indexOf(tensorName)
     if (inputPosition === -1) return
     const incoming = graphWithStructuralEdits.edges.find(e => e.target === targetNodeId && e.label === tensorName)
-    if (!incoming || incoming.source.startsWith('passthrough_')) return
+    if (!incoming || incoming.source.startsWith('passthrough_')) {
+      announce('Cannot insert onto a generated connection', 'reject')
+      return
+    }
     handleInsertPassthrough(targetNodeId, inputPosition)
+    announce(`Inserted passthrough on ${tensorName} (Ctrl+Z to undo)`)
   }
 
   const handleReset = () => {

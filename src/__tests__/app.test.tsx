@@ -137,6 +137,13 @@ describe('App -- model load flow', () => {
   })
 })
 
+// No jsdom test for the edge-insert popover: react-flow never populates
+// .react-flow__edges in jsdom (edge paths depend on node measurements from
+// ResizeObserver, which test-setup.ts stubs as a no-op) -- confirmed by
+// dumping the DOM directly, and no existing test in this codebase exercises
+// edge clicks for the same reason. Verified live against a production
+// preview build instead (see PROGRESS.md).
+
 describe('App -- drop anytime to replace the model', () => {
   it('shows a replace overlay on dragenter and posts LOAD_MODEL for the dropped file on drop', async () => {
     render(<App />)
