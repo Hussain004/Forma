@@ -14,7 +14,7 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 - [ ] P0 Product identity on the empty state
 - [ ] P0 Humanize the malformed-file error
 - [ ] P1 Self-host JetBrains Mono
-- [ ] P1 Remove the dead reactflow 11 dependency and starter leftovers
+- [x] P1 Remove the dead reactflow 11 dependency and starter leftovers
 - [ ] P1 Rename "Download" and fix its filename
 - [ ] P1 Fix dim-text contrast and micro type sizes
 - [ ] P1 Make shortcuts discoverable
@@ -50,5 +50,7 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 ## Log
 
 (most recent first)
+
+- Removed the unused `reactflow` v11 package (nothing imports it, `@xyflow/react` v12 is the real dependency) and Vite-starter leftovers (react.svg, vite.svg, empty App.css). Left hero.png alone since it isn't referenced anywhere and wasn't called out in the audit -- may be intentional for future README use.
 
 - Real title + OG/Twitter meta tags in index.html; generated public/og-image.png (a static Avionics-Blueprint-styled card, not a live screenshot, since no sample model existed yet at this point in the work).

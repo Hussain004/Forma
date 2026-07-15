@@ -20,8 +20,7 @@
     "dagre": "^0.8.5",
     "onnxruntime-web": "^1.27.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7",
-    "reactflow": "^11.11.4"
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
