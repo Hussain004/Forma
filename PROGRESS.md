@@ -16,7 +16,7 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 - [ ] P1 Self-host JetBrains Mono
 - [x] P1 Remove the dead reactflow 11 dependency and starter leftovers
 - [ ] P1 Rename "Download" and fix its filename
-- [ ] P1 Fix dim-text contrast and micro type sizes
+- [x] P1 Fix dim-text contrast and micro type sizes
 - [ ] P1 Make shortcuts discoverable
 - [ ] P1 Benchmark warmup and running state
 - [x] P2 Layout toggle that says what it does
@@ -50,6 +50,8 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 ## Log
 
 (most recent first)
+
+- Raised `--text-dim` from #4A4F5E (~2.2:1, WCAG fail) to #7A8191 (~4.5:1, WCAG AA pass) and pointed the hardcoded #5A6070 shape-label color and #3A4050 idle-pencil color at the same token instead of their own separate low-contrast values. Bumped MOD/NEW node badges from 7px to 9px and shape labels from 9px to 10px. Verified live: node shape labels ([1, 4]) went from barely visible to clearly legible.
 
 - Placement ghost now scales with canvas zoom (via `onViewportChange`, CSS transform: scale from center) instead of staying a fixed screen size while the real node scales with the viewport; added an "ESC TO CANCEL" hint. Verified live at a zoomed-out viewport (screenshot: ghost visibly smaller than the real node behind it).
 

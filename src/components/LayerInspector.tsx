@@ -452,7 +452,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
             const original = v as string | number
             const isEditing = editingAttr === k
             const isHovered = hoveredAttr === k
-            const pencilColor = isHovered ? '#FFB000' : '#3A4050'
+            const pencilColor = isHovered ? '#FFB000' : 'var(--text-dim)'
             const hoverRowStyle: CSSProperties = {
               ...rowStyle,
               background: isHovered && !isEditing ? 'rgba(255,176,0,0.04)' : 'transparent',

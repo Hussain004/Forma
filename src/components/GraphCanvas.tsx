@@ -115,12 +115,12 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
     >
       <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: accent, borderRadius: '2px 0 0 2px', transition: 'background-color 150ms ease' }} />
       {data.isModified && (
-        <div style={{ position: 'absolute', top: 3, right: 3, fontSize: 7, letterSpacing: '0.08em', color: '#FFB000', background: 'rgba(255,176,0,0.12)', padding: '1px 4px', borderRadius: 1 }}>
+        <div style={{ position: 'absolute', top: 3, right: 3, fontSize: 9, letterSpacing: '0.08em', color: '#FFB000', background: 'rgba(255,176,0,0.12)', padding: '1px 4px', borderRadius: 1 }}>
           MOD
         </div>
       )}
       {data.isSynthetic && (
-        <div style={{ position: 'absolute', top: 3, left: 7, fontSize: 7, letterSpacing: '0.08em', color: 'var(--color-green)', background: 'rgba(82,197,122,0.12)', padding: '1px 4px', borderRadius: 1 }}>
+        <div style={{ position: 'absolute', top: 3, left: 7, fontSize: 9, letterSpacing: '0.08em', color: 'var(--color-green)', background: 'rgba(82,197,122,0.12)', padding: '1px 4px', borderRadius: 1 }}>
           NEW
         </div>
       )}
@@ -144,7 +144,7 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
         {data.paramCount > 0 ? data.paramCount.toLocaleString() + ' PARAMS' : 'NO PARAMS'}
       </div>
       {data.shapeLabel && (
-        <div style={{ color: '#5A6070', fontSize: 9, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ color: 'var(--text-dim)', fontSize: 10, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {data.shapeLabel}
         </div>
       )}
@@ -192,7 +192,7 @@ function IONode({ data, selected }: NodeProps<Node<IOData>>) {
         {data.label}
       </div>
       {data.shapeLabel && (
-        <div style={{ color: '#5A6070', fontSize: 9, letterSpacing: '0.04em' }}>
+        <div style={{ color: 'var(--text-dim)', fontSize: 10, letterSpacing: '0.04em' }}>
           {data.shapeLabel}
         </div>
       )}
@@ -272,7 +272,7 @@ function toFlowGraph(
         target: e.target,
         targetHandle: inputPosition >= 0 ? `in-${inputPosition}` : undefined,
         label: shapeLabel,
-        labelStyle: { fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#5A6070' },
+        labelStyle: { fontSize: 10, fontFamily: 'JetBrains Mono, monospace', fill: 'var(--text-dim)' },
         labelBgStyle: { fill: '#12161A', fillOpacity: 0.85 },
         labelBgPadding: [3, 4] as [number, number],
         style: { stroke: '#FFB000', strokeWidth: 1, cursor: 'pointer' },

@@ -17,7 +17,10 @@
 
   --text-primary: #E8EAF0;
   --text-secondary: #8A8F9E;
-  --text-dim: #4A4F5E;
+  /* 4.5:1+ against bg-base/bg-surface (WCAG AA for normal text) -- the previous
+     #4A4F5E measured ~2.2:1 and was used for real content (section headers,
+     hints, badges), not just decoration. */
+  --text-dim: #7A8191;
 
   --space-1: 4px;
   --space-2: 8px;
