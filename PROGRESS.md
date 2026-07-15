@@ -20,7 +20,7 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 - [ ] P1 Make shortcuts discoverable
 - [ ] P1 Benchmark warmup and running state
 - [x] P2 Layout toggle that says what it does
-- [ ] P2 Placement-mode polish
+- [x] P2 Placement-mode polish
 - [x] P2 MiniMap category colors and node-count grammar (model-name flex-width deferred to the stats bar responsive collapse item, where the bar's overflow behavior gets rebuilt properly)
 - [x] P2 One-prop render culling for big graphs (gated on `onnxNodes.length > 300`, not always-on -- jsdom reports zero-size bounding rects in tests, which would cull every node in every small fixture if this ran unconditionally)
 - [ ] P2 Consolidate the styling system
@@ -50,6 +50,8 @@ Legend: [ ] not started, [~] in progress, [x] done, [-] skipped (needs a decisio
 ## Log
 
 (most recent first)
+
+- Placement ghost now scales with canvas zoom (via `onViewportChange`, CSS transform: scale from center) instead of staying a fixed screen size while the real node scales with the viewport; added an "ESC TO CANCEL" hint. Verified live at a zoomed-out viewport (screenshot: ghost visibly smaller than the real node behind it).
 
 - Free-text Add Node entry gets an input-count stepper (1-8, defaulting to 1) instead of hardcoding a single input; stepper buttons use preventDefault on mousedown so they don't blur the text field and close the dropdown. New test + verified live.
 

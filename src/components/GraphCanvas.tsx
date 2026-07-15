@@ -309,6 +309,10 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null)
+  // Tracks canvas zoom so the placement ghost can match the size the node will
+  // actually render at -- without this it stays a fixed screen size while the
+  // placed node scales with the viewport, so the two visibly disagree.
+  const [zoom, setZoom] = useState(1)
   // ReactFlowInstance.screenToFlowPosition is only reachable via useReactFlow(),
   // which requires being a descendant of <ReactFlow>'s own provider (see
   // JumpController above) -- GraphCanvas itself is the ancestor that renders
@@ -335,6 +339,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         onInit={(instance) => { reactFlowInstanceRef.current = instance }}
+        onViewportChange={(viewport) => setZoom(viewport.zoom)}
         onNodeClick={(event, node) => {
           if (event.ctrlKey || event.metaKey) {
             onNodeCtrlClick?.(node.id)
@@ -411,6 +416,8 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             top: cursorPos.y - NODE_HEIGHT / 2,
             width: NODE_WIDTH,
             minHeight: NODE_HEIGHT,
+            transform: `scale(${zoom})`,
+            transformOrigin: 'center center',
             background: '#16191C',
             border: '1px dashed rgba(255,176,0,0.6)',
             borderRadius: 2,
@@ -429,7 +436,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             {pendingNodeType.opType}
           </div>
           <div style={{ color: 'var(--text-dim)', fontSize: 9, letterSpacing: '0.06em' }}>
-            CLICK TO PLACE
+            CLICK TO PLACE / ESC TO CANCEL
           </div>
         </div>
       )}
