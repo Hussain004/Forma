@@ -97,6 +97,34 @@ describe('App -- model load flow', () => {
   })
 })
 
+describe('App -- keyboard shortcuts overlay', () => {
+  it('? opens the overlay, Esc closes it', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+
+    expect(screen.queryByTestId('shortcuts-overlay')).not.toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: '?' })
+    expect(screen.getByTestId('shortcuts-overlay')).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByTestId('shortcuts-overlay')).not.toBeInTheDocument()
+  })
+
+  it('closes via the Close button', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+
+    fireEvent.keyDown(window, { key: '?' })
+    fireEvent.click(screen.getByRole('button', { name: /close/i }))
+    expect(screen.queryByTestId('shortcuts-overlay')).not.toBeInTheDocument()
+  })
+})
+
 describe('App -- benchmark running state', () => {
   it('disables the button and shows Running while a benchmark is in flight, then Benchmark again', () => {
     render(<App />)

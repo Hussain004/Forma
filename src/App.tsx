@@ -32,6 +32,65 @@ function formatNumber(n: number): string {
   return String(n)
 }
 
+const SHORTCUTS: [string, string][] = [
+  ['/', 'Focus the node filter'],
+  ['Click', 'Select a node'],
+  ['Ctrl+Click', 'Multi-select nodes'],
+  ['Drag handle to handle', 'Rewire a connection'],
+  ['Delete', 'Delete the selected node(s)'],
+  ['Ctrl+Z', 'Undo the last edit'],
+  ['Esc', 'Cancel / clear selection'],
+  ['?', 'Toggle this panel'],
+]
+
+function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      role="dialog"
+      aria-label="Keyboard shortcuts"
+      data-testid="shortcuts-overlay"
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 2000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(0,0,0,0.5)',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'var(--bg-surface)',
+          borderLeft: '2px solid var(--color-amber)',
+          border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: 2,
+          padding: 20,
+          width: 360,
+          fontFamily: 'var(--font-mono)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ color: 'var(--color-amber)', fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            Keyboard shortcuts
+          </span>
+          <button onClick={onClose} className="btn-ghost" style={{ fontSize: 10, padding: '2px 8px' }}>
+            Close
+          </button>
+        </div>
+        {SHORTCUTS.map(([key, desc]) => (
+          <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <span style={{ color: 'var(--text-primary)', fontSize: 11, letterSpacing: '0.02em' }}>{desc}</span>
+            <span style={{ color: 'var(--text-dim)', fontSize: 11, letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>{key}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 interface StatsBarProps {
   modelName: string
   totalParams: number
@@ -116,7 +175,8 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
           onKeyDown={onFilterKeyDown}
           onFocus={onFilterFocus}
           onBlur={onFilterBlur}
-          placeholder="FILTER NODES"
+          placeholder="FILTER NODES  /"
+          title="Focus with / -- press ? for all shortcuts"
           className="input-mono"
           style={{
             background: 'transparent',
@@ -323,6 +383,7 @@ function App() {
   const [structuralOps, setStructuralOps] = useState<GraphEdit[]>([])
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [pendingNodeType, setPendingNodeType] = useState<{ opType: string; inputCount: number } | null>(null)
+  const [showShortcuts, setShowShortcuts] = useState(false)
   const filterInputRef = useRef<HTMLInputElement>(null)
   const undoStackRef = useRef(undoStack)
   undoStackRef.current = undoStack
@@ -335,6 +396,8 @@ function App() {
   const customNodeCounterRef = useRef(0)
   const pendingNodeTypeRef = useRef(pendingNodeType)
   pendingNodeTypeRef.current = pendingNodeType
+  const showShortcutsRef = useRef(showShortcuts)
+  showShortcutsRef.current = showShortcuts
   const isResizing = useRef(false)
   const resizeStartX = useRef(0)
   const resizeStartWidth = useRef(0)
@@ -432,6 +495,10 @@ function App() {
         return
       }
       if (e.key === 'Escape') {
+        if (showShortcutsRef.current) {
+          setShowShortcuts(false)
+          return
+        }
         if (pendingNodeTypeRef.current) {
           setPendingNodeType(null)
           return
@@ -446,6 +513,11 @@ function App() {
       if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
         e.preventDefault()
         filterInputRef.current?.focus()
+        return
+      }
+      if (e.key === '?' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        e.preventDefault()
+        setShowShortcuts(v => !v)
       }
     }
     window.addEventListener('keydown', handler)
@@ -875,6 +947,7 @@ function App() {
           </div>
         </>
       )}
+      {showShortcuts && <ShortcutsOverlay onClose={() => setShowShortcuts(false)} />}
     </div>
   )
 }

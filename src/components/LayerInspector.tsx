@@ -190,6 +190,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
             height: '100%',
             minWidth: 260,
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -203,6 +204,9 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
             }}
           >
             Select a node
+          </span>
+          <span style={{ color: 'var(--text-dim)', letterSpacing: '0.06em', fontSize: 10, marginTop: 8 }}>
+            Press ? for shortcuts
           </span>
         </div>
       )
@@ -278,6 +282,9 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
             ))}
           </>
         )}
+        <div style={{ marginTop: 20, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', color: 'var(--text-dim)', fontSize: 10, letterSpacing: '0.04em' }}>
+          Click a node to inspect. Press ? for shortcuts.
+        </div>
       </div>
     )
   }
