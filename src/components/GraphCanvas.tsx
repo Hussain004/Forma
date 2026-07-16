@@ -94,6 +94,10 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
   const accent = data.excluded
     ? 'rgba(255,255,255,0.08)'
     : traceAccent(data.traceRole) ?? (selected ? 'var(--color-amber)' : opCategoryColor(data.opType))
+  // Badges are absolutely positioned in the top corners; without reserved
+  // headroom they sit directly on the op-type title (centered content leaves
+  // only ~8px of slack, less than a badge's height).
+  const hasBadge = data.isModified || data.isSynthetic
   return (
     <div
       style={{
@@ -103,7 +107,7 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
         background: 'var(--bg-surface)',
         border,
         borderRadius: 2,
-        padding: '8px 12px',
+        padding: hasBadge ? '24px 12px 8px' : '8px 12px',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
@@ -115,12 +119,12 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
     >
       <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: accent, borderRadius: '2px 0 0 2px', transition: 'background-color 150ms ease' }} />
       {data.isModified && (
-        <div style={{ position: 'absolute', top: 3, right: 3, fontSize: 9, letterSpacing: '0.08em', color: 'var(--color-amber)', background: 'rgba(255,176,0,0.12)', padding: '1px 4px', borderRadius: 1 }}>
+        <div style={{ position: 'absolute', top: 5, right: 5, fontSize: 9, letterSpacing: '0.08em', color: 'var(--color-amber)', background: 'rgba(255,176,0,0.12)', padding: '1px 4px', borderRadius: 1 }}>
           MOD
         </div>
       )}
       {data.isSynthetic && (
-        <div style={{ position: 'absolute', top: 3, left: 7, fontSize: 9, letterSpacing: '0.08em', color: 'var(--color-green)', background: 'rgba(82,197,122,0.12)', padding: '1px 4px', borderRadius: 1 }}>
+        <div style={{ position: 'absolute', top: 5, left: 7, fontSize: 9, letterSpacing: '0.08em', color: 'var(--color-green)', background: 'rgba(82,197,122,0.12)', padding: '1px 4px', borderRadius: 1 }}>
           NEW
         </div>
       )}
