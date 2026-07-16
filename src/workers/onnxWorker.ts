@@ -20,6 +20,7 @@ type WorkerResponse =
   | { type: 'BENCHMARK_RESULT'; payload: { avgMs: number; medianMs: number; minMs: number; maxMs: number; runs: number } }
   | { type: 'QUANTIZE_ESTIMATE'; payload: { int8SizeMB: number; originalSizeMB: number; ratio: number } }
   | { type: 'EXPORT_RESULT'; payload: ArrayBuffer }
+  | { type: 'VERIFY_RESULT'; payload: { valid: boolean; message?: string } }
   // scope distinguishes a failed LOAD_MODEL (nothing usable exists yet, the
   // dropzone/error screen is the right response) from a failed operation on an
   // already-loaded model (benchmark/inference/export) -- the loaded graph and
@@ -158,7 +159,23 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
     } else if (cmd.type === 'EXPORT_MODIFIED') {
       if (!exportBuffer) throw new Error('No model loaded')
       const patched = writeModifiedOnnx(exportBuffer, cmd.payload.overrides, cmd.payload.structuralOps)
-      ctx.postMessage({ type: 'EXPORT_RESULT', payload: patched }, [patched])
+      // Send the bytes immediately -- the download shouldn't wait on the
+      // verification below, which may need to pull the WASM runtime first.
+      const toSend = patched.slice(0)
+      ctx.postMessage({ type: 'EXPORT_RESULT', payload: toSend }, [toSend])
+      // Verify-roundtrip: prove the exported bytes actually load in
+      // onnxruntime rather than just claiming structural validity. Uses a
+      // throwaway session so the active session for the loaded model (if
+      // any) is untouched. A failure here is a warning, not an error --
+      // the file already downloaded, this tells the user what a runtime
+      // will say about it.
+      try {
+        const verifySession = await ort.InferenceSession.create(patched)
+        await verifySession.release()
+        ctx.postMessage({ type: 'VERIFY_RESULT', payload: { valid: true } })
+      } catch (verifyErr) {
+        ctx.postMessage({ type: 'VERIFY_RESULT', payload: { valid: false, message: (verifyErr as Error).message } })
+      }
     }
   } catch (err) {
     ctx.postMessage({ type: 'ERROR', payload: (err as Error).message, scope: cmd.type === 'LOAD_MODEL' ? 'load' : 'operation' })

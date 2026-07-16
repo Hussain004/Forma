@@ -18,6 +18,7 @@ let mockWorker: ReturnType<typeof makeMockWorker>
 beforeEach(() => {
   mockWorker = makeMockWorker()
   vi.stubGlobal('Worker', vi.fn(function () { return mockWorker }))
+  localStorage.clear()
 })
 
 afterEach(() => {
@@ -143,6 +144,92 @@ describe('App -- model load flow', () => {
 // dumping the DOM directly, and no existing test in this codebase exercises
 // edge clicks for the same reason. Verified live against a production
 // preview build instead (see PROGRESS.md).
+
+describe('App -- one-time onboarding hint chips', () => {
+  it('shows the hints on first model load and hides them after dismiss-all, persisting the choice', () => {
+    render(<App />)
+    expect(screen.queryByTestId('onboarding-hints')).not.toBeInTheDocument()
+
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    expect(screen.getByTestId('onboarding-hints')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('dismiss-all-hints'))
+    expect(screen.queryByTestId('onboarding-hints')).not.toBeInTheDocument()
+    expect(localStorage.getItem('forma_hints_dismissed')).toBe('1')
+  })
+
+  it('dismissing every chip individually also persists the flag', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    const closeButtons = screen.getAllByRole('button', { name: /dismiss hint:/i })
+    closeButtons.forEach((b) => fireEvent.click(b))
+    expect(screen.queryByTestId('onboarding-hints')).not.toBeInTheDocument()
+    expect(localStorage.getItem('forma_hints_dismissed')).toBe('1')
+  })
+
+  it('never shows the hints once the flag is set', () => {
+    localStorage.setItem('forma_hints_dismissed', '1')
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    expect(screen.queryByTestId('onboarding-hints')).not.toBeInTheDocument()
+  })
+})
+
+describe('App -- desktop gate on narrow viewports', () => {
+  const stubMatchMedia = (matches: boolean) => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })))
+  }
+
+  it('shows the gate instead of the app below the width threshold', () => {
+    stubMatchMedia(true)
+    render(<App />)
+    expect(screen.getByTestId('desktop-gate')).toBeInTheDocument()
+    expect(screen.queryByText(/drop .onnx/i)).not.toBeInTheDocument()
+  })
+
+  it('shows the normal app on wide viewports', () => {
+    stubMatchMedia(false)
+    render(<App />)
+    expect(screen.queryByTestId('desktop-gate')).not.toBeInTheDocument()
+    expect(screen.getByText(/drop .onnx/i)).toBeInTheDocument()
+  })
+})
+
+describe('App -- export verify-roundtrip announcements', () => {
+  it('announces a valid verification result', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'VERIFY_RESULT', payload: { valid: true } } } as MessageEvent)
+    })
+    expect(screen.getByTestId('announcement')).toHaveTextContent(/export verified/i)
+  })
+
+  it('announces a failed verification with the runtime reason', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    act(() => {
+      mockWorker.onmessage?.({
+        data: { type: 'VERIFY_RESULT', payload: { valid: false, message: 'No opset import for domain custom' } },
+      } as MessageEvent)
+    })
+    expect(screen.getByTestId('announcement')).toHaveTextContent(/onnxruntime rejected the model: No opset import/i)
+  })
+})
 
 describe('App -- drop anytime to replace the model', () => {
   it('shows a replace overlay on dragenter and posts LOAD_MODEL for the dropped file on drop', async () => {

@@ -18,11 +18,18 @@ import {
 import dagre from 'dagre'
 import '@xyflow/react/dist/style.css'
 import type { OnnxNode, OnnxEdge } from '../lib/onnxTypes'
+import type { LayoutRequest, LayoutResponse } from '../workers/layoutWorker'
 import { formatShape } from '../lib/onnxProtoParser'
 import { validateEdges, opCategoryColor, type SelectableNode } from '../lib/graphUtils'
 
 const NODE_WIDTH = 180
 const NODE_HEIGHT = 64
+
+// Above this node count, dagre moves off the main thread (see layoutWorker.ts)
+// and the large-model banner shows. Below it, layout stays synchronous -- at
+// small scale dagre costs single-digit milliseconds and the async round-trip
+// would only add flicker.
+const LARGE_GRAPH_THRESHOLD = 500
 
 type TraceRole = 'ancestor' | 'descendant' | null
 
@@ -237,6 +244,9 @@ function toFlowGraph(
   traceAncestors: Set<string>,
   traceDescendants: Set<string>,
   layoutDir: 'TB' | 'LR' = 'TB',
+  // 'deferred' skips the synchronous dagre pass -- positions arrive later
+  // from layoutWorker.ts. Manual positions still apply immediately.
+  layoutMode: 'sync' | 'deferred' = 'sync',
 ) {
   const traceActive = selectedNodeId !== null && (traceAncestors.size > 0 || traceDescendants.size > 0)
   const rawNodes: Node[] = onnxNodes.map((n) => {
@@ -294,7 +304,14 @@ function toFlowGraph(
     if (n.position) manualPositions.set(n.id, n.position)
   }
 
-  return { nodes: applyDagreLayout(rawNodes, edges, layoutDir, manualPositions), edges }
+  if (layoutMode === 'deferred') {
+    const nodes = rawNodes.map((n) => {
+      const manual = manualPositions.get(n.id)
+      return manual ? { ...n, position: manual } : n
+    })
+    return { nodes, edges, manualPositions }
+  }
+  return { nodes: applyDagreLayout(rawNodes, edges, layoutDir, manualPositions), edges, manualPositions }
 }
 
 function JumpController({ jumpToNodeId }: { jumpToNodeId?: string | null }) {
@@ -309,9 +326,10 @@ function JumpController({ jumpToNodeId }: { jumpToNodeId?: string | null }) {
 const EMPTY_TRACE: Set<string> = new Set()
 
 export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, onBoxSelect, onEdgeClick, onRewire, pendingNodeType, onPlaceNode, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE, layoutDir = 'TB' }: GraphCanvasProps) {
+  const isLargeGraph = onnxNodes.length > LARGE_GRAPH_THRESHOLD
   const computed = useMemo(
-    () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir),
-    [onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir],
+    () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir, isLargeGraph ? 'deferred' : 'sync'),
+    [onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir, isLargeGraph],
   )
 
   const [nodes, setNodes, onNodesChange] = useNodesState(computed.nodes)
@@ -332,11 +350,59 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
   // JumpController above) -- GraphCanvas itself is the ancestor that renders
   // <ReactFlow>, so onInit's instance callback is the way to reach it from here.
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null)
+  // Lazily created on the first large graph, never for small ones -- besides
+  // being pointless there, tests stub the global Worker with a single mock
+  // shared with the ONNX worker, so an unconditional second Worker would
+  // clobber that mock's message handler.
+  const layoutWorkerRef = useRef<Worker | null>(null)
+  const layoutRequestIdRef = useRef(0)
+  const [layoutPending, setLayoutPending] = useState(false)
+
+  useEffect(() => () => { layoutWorkerRef.current?.terminate() }, [])
 
   useEffect(() => {
     setNodes(computed.nodes)
     setEdges(computed.edges)
-  }, [computed, setNodes, setEdges])
+    if (!isLargeGraph) return
+
+    if (!layoutWorkerRef.current) {
+      layoutWorkerRef.current = new Worker(new URL('../workers/layoutWorker.ts', import.meta.url), { type: 'module' })
+    }
+    const worker = layoutWorkerRef.current
+    const requestId = ++layoutRequestIdRef.current
+    setLayoutPending(true)
+    const manual = computed.manualPositions
+    // Extremely deep graphs (chains ~1000+ long) overflow dagre's recursion
+    // in a worker, whose stack is smaller than the main thread's -- the same
+    // layout succeeds synchronously. One freeze is the correct trade against
+    // an unpositioned pile of nodes.
+    const syncFallback = () => {
+      if (requestId !== layoutRequestIdRef.current) return
+      setNodes(applyDagreLayout(computed.nodes, computed.edges, layoutDir, manual))
+      setLayoutPending(false)
+      requestAnimationFrame(() => reactFlowInstanceRef.current?.fitView({ padding: 0.1 }))
+    }
+    worker.onerror = syncFallback
+    worker.onmessage = (event: MessageEvent<LayoutResponse>) => {
+      // A newer request may have been posted while this one computed
+      // (structural edit, layout toggle) -- only the latest response counts.
+      if (event.data.requestId !== layoutRequestIdRef.current) return
+      if (event.data.error) {
+        syncFallback()
+        return
+      }
+      const { positions } = event.data
+      setNodes((nds) => nds.map((n) => (positions[n.id] ? { ...n, position: positions[n.id] } : n)))
+      setLayoutPending(false)
+      requestAnimationFrame(() => reactFlowInstanceRef.current?.fitView({ padding: 0.1 }))
+    }
+    worker.postMessage({
+      requestId,
+      rankdir: layoutDir,
+      nodes: computed.nodes.filter((n) => !manual.has(n.id)).map((n) => ({ id: n.id, width: NODE_WIDTH, height: NODE_HEIGHT })),
+      edges: computed.edges.filter((e) => !manual.has(e.source) && !manual.has(e.target)).map((e) => ({ source: e.source, target: e.target })),
+    } satisfies LayoutRequest)
+  }, [computed, setNodes, setEdges, isLargeGraph, layoutDir])
 
   const hoveredNode = hoveredNodeId ? onnxNodes.find((n) => n.id === hoveredNodeId) : null
 
@@ -357,10 +423,35 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
 
   return (
     <div
-      style={{ width: '100%', height: '100%', cursor: pendingNodeType ? 'crosshair' : undefined }}
+      style={{ position: 'relative', width: '100%', height: '100%', cursor: pendingNodeType ? 'crosshair' : undefined }}
       data-testid="graph-canvas"
       onMouseMove={pendingNodeType ? (event) => setCursorPos({ x: event.clientX, y: event.clientY }) : undefined}
     >
+      {isLargeGraph && (
+        <div
+          data-testid="large-graph-banner"
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1200,
+            padding: '3px 12px',
+            background: 'var(--bg-raised)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 2,
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            whiteSpace: 'nowrap',
+            color: layoutPending ? 'var(--color-amber)' : 'var(--text-dim)',
+            pointerEvents: 'none',
+          }}
+        >
+          {layoutPending ? 'Computing layout...' : `Large model: ${onnxNodes.length.toLocaleString()} nodes -- layout runs in the background`}
+        </div>
+      )}
       <ReactFlow
         nodes={nodes}
         edges={displayEdges}
