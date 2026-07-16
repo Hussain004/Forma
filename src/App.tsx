@@ -106,6 +106,69 @@ function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
   )
 }
 
+// The core interactions (drag-to-rewire onto 6px handles, ctrl-click
+// multi-select, hover-revealed edit affordances, a resizable side panel) are
+// mouse-and-space dependent; at phone widths the app is not degraded, it is
+// unusable. Rather than show that as a first impression, narrow viewports get
+// a gate with a product screenshot -- it converts phone visitors into desktop
+// return visits instead of bounces.
+const NARROW_VIEWPORT_QUERY = '(max-width: 899px)'
+
+function useIsNarrowViewport(): boolean {
+  const [narrow, setNarrow] = useState(
+    // jsdom doesn't implement matchMedia; treat that as "not narrow".
+    () => typeof window.matchMedia === 'function' && window.matchMedia(NARROW_VIEWPORT_QUERY).matches,
+  )
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia(NARROW_VIEWPORT_QUERY)
+    const onChange = (e: MediaQueryListEvent) => setNarrow(e.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return narrow
+}
+
+function DesktopGate() {
+  return (
+    <div
+      data-testid="desktop-gate"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 16,
+        padding: 24,
+        background: 'var(--bg-base)',
+        fontFamily: 'var(--font-mono)',
+        textAlign: 'center',
+        overflowY: 'auto',
+      }}
+    >
+      <span style={{ fontSize: 30, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-primary)' }}>
+        FOR<span style={{ color: 'var(--color-amber)' }}>M</span>A
+      </span>
+      <span style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.7, letterSpacing: '0.02em', maxWidth: 340 }}>
+        Visualize, edit, and re-export ONNX and TFLite models entirely in your browser.
+      </span>
+      <img
+        src="/og-image.png"
+        alt="The Forma editor showing a model graph with an inspector panel"
+        style={{ width: '100%', maxWidth: 440, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 2 }}
+      />
+      <span style={{ color: 'var(--text-dim)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', maxWidth: 320, lineHeight: 1.8 }}>
+        Forma is a desktop tool -- open it on a larger screen
+      </span>
+      <a href="https://github.com/Hussain004/Forma" target="_blank" rel="noreferrer" className="btn-link btn-bar btn-ghost">
+        View on GitHub
+      </a>
+    </div>
+  )
+}
+
 interface StatsBarProps {
   modelName: string
   totalParams: number
@@ -454,6 +517,7 @@ function App() {
   // runtime in this project), so attribute/structural editing, Benchmark, and Export
   // Modified are all withheld for it -- see tfliteParser.ts and onnxWorker.ts.
   const isReadOnly = graph?.format === 'tflite'
+  const isNarrowViewport = useIsNarrowViewport()
   const [selectableGraph, setSelectableGraph] = useState<SelectableGraph | null>(null)
   const [filterQuery, setFilterQuery] = useState('')
   const [layoutDir, setLayoutDir] = useState<'TB' | 'LR'>('TB')
@@ -1042,6 +1106,8 @@ function App() {
     }
     reader.readAsArrayBuffer(file)
   }
+
+  if (isNarrowViewport) return <DesktopGate />
 
   return (
     <div
