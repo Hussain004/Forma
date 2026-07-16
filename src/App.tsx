@@ -46,6 +46,18 @@ function StatValue({ value, unit, title }: { value: string; unit: string; title:
   )
 }
 
+const HINTS_DISMISSED_KEY = 'forma_hints_dismissed'
+
+// The interactions that make Forma an editor rather than a viewer, none of
+// which a first-time visitor can discover except by accident (hover-only
+// pencil, unlabeled drag handles). Shown once ever, over the canvas, on the
+// first model load; see visibleHints/dismissHint in App.
+const ONBOARDING_HINTS: string[] = [
+  'Drag from a node handle to another to rewire',
+  'Click an attribute value in the inspector to edit it',
+  'Press ? for all shortcuts',
+]
+
 const SHORTCUTS: [string, string][] = [
   ['/', 'Focus the node filter'],
   ['Click', 'Select a node'],
@@ -102,6 +114,69 @@ function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+// The core interactions (drag-to-rewire onto 6px handles, ctrl-click
+// multi-select, hover-revealed edit affordances, a resizable side panel) are
+// mouse-and-space dependent; at phone widths the app is not degraded, it is
+// unusable. Rather than show that as a first impression, narrow viewports get
+// a gate with a product screenshot -- it converts phone visitors into desktop
+// return visits instead of bounces.
+const NARROW_VIEWPORT_QUERY = '(max-width: 899px)'
+
+function useIsNarrowViewport(): boolean {
+  const [narrow, setNarrow] = useState(
+    // jsdom doesn't implement matchMedia; treat that as "not narrow".
+    () => typeof window.matchMedia === 'function' && window.matchMedia(NARROW_VIEWPORT_QUERY).matches,
+  )
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia(NARROW_VIEWPORT_QUERY)
+    const onChange = (e: MediaQueryListEvent) => setNarrow(e.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return narrow
+}
+
+function DesktopGate() {
+  return (
+    <div
+      data-testid="desktop-gate"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 16,
+        padding: 24,
+        background: 'var(--bg-base)',
+        fontFamily: 'var(--font-mono)',
+        textAlign: 'center',
+        overflowY: 'auto',
+      }}
+    >
+      <span style={{ fontSize: 30, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-primary)' }}>
+        FOR<span style={{ color: 'var(--color-amber)' }}>M</span>A
+      </span>
+      <span style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.7, letterSpacing: '0.02em', maxWidth: 340 }}>
+        Visualize, edit, and re-export ONNX and TFLite models entirely in your browser.
+      </span>
+      <img
+        src="/og-image.png"
+        alt="The Forma editor showing a model graph with an inspector panel"
+        style={{ width: '100%', maxWidth: 440, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 2 }}
+      />
+      <span style={{ color: 'var(--text-dim)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', maxWidth: 320, lineHeight: 1.8 }}>
+        Forma is a desktop tool -- open it on a larger screen
+      </span>
+      <a href="https://github.com/Hussain004/Forma" target="_blank" rel="noreferrer" className="btn-link btn-bar btn-ghost">
+        View on GitHub
+      </a>
     </div>
   )
 }
@@ -357,7 +432,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
         {canDownloadModified && (
           <button
             onClick={onDownloadModified}
-            title="Export the model with your edits applied"
+            title="Export the model with your edits applied. The exported bytes are verified by loading them through onnxruntime; the result appears in the status line."
             className="btn-bar btn-primary"
           >
             Export Modified ({editCount})
@@ -449,11 +524,12 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
 }
 
 function App() {
-  const { loadModel, runBenchmark, exportModel, exportModifiedModel, graph, status, error, operationError, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
+  const { loadModel, runBenchmark, exportModel, exportModifiedModel, graph, status, error, operationError, verifyResult, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
   // TFLite support is read-only: no inference session ever exists for it (no TFLite
   // runtime in this project), so attribute/structural editing, Benchmark, and Export
   // Modified are all withheld for it -- see tfliteParser.ts and onnxWorker.ts.
   const isReadOnly = graph?.format === 'tflite'
+  const isNarrowViewport = useIsNarrowViewport()
   const [selectableGraph, setSelectableGraph] = useState<SelectableGraph | null>(null)
   const [filterQuery, setFilterQuery] = useState('')
   const [layoutDir, setLayoutDir] = useState<'TB' | 'LR'>('TB')
@@ -470,6 +546,12 @@ function App() {
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [pendingNodeType, setPendingNodeType] = useState<{ opType: string; inputCount: number } | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
+  // Indices into ONBOARDING_HINTS still visible. Populated on the first model
+  // load ever (localStorage-gated); once every chip is dismissed the flag
+  // persists and they never appear again -- the compromise between "the
+  // headline features are invisible" and a scripted tour that would poison
+  // the terminal aesthetic.
+  const [visibleHints, setVisibleHints] = useState<Set<number>>(new Set())
   const [announcement, setAnnouncement] = useState<{ text: string; tone: 'reject' | 'info' } | null>(null)
   const announceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [dragOverlay, setDragOverlay] = useState(false)
@@ -527,8 +609,27 @@ function App() {
     passthroughCounterRef.current = 0
     customNodeCounterRef.current = 0
     setPendingNodeType(null)
-    if (graph) setShowDropzone(false)
+    if (graph) {
+      setShowDropzone(false)
+      try {
+        if (localStorage.getItem(HINTS_DISMISSED_KEY) !== '1') {
+          setVisibleHints(new Set(ONBOARDING_HINTS.map((_, i) => i)))
+        }
+      } catch {
+        // localStorage unavailable (privacy mode): skip hints rather than crash.
+      }
+    }
   }, [graph])
+
+  const dismissHint = (index: number | 'all') => {
+    setVisibleHints((prev) => {
+      const next = index === 'all' ? new Set<number>() : new Set([...prev].filter((i) => i !== index))
+      if (next.size === 0) {
+        try { localStorage.setItem(HINTS_DISMISSED_KEY, '1') } catch { /* best effort */ }
+      }
+      return next
+    })
+  }
 
   // Avionics-annunciator-style status line: a single line of feedback for
   // actions that were previously silent (a rejected rewire, nodes skipped
@@ -544,6 +645,15 @@ function App() {
   useEffect(() => {
     if (operationError) announce(operationError.message, 'reject')
   }, [operationError])
+
+  useEffect(() => {
+    if (!verifyResult) return
+    if (verifyResult.valid) {
+      announce('Export verified: loads cleanly in onnxruntime')
+    } else {
+      announce(`Export warning: onnxruntime rejected the model: ${verifyResult.message ?? 'unknown reason'}`, 'reject')
+    }
+  }, [verifyResult])
 
   // Shared by the Delete keyboard shortcut and the "Delete all" bulk button --
   // covers a single selected node too, since selectedNodeIds always contains the
@@ -975,6 +1085,7 @@ function App() {
             ? { type: 'rewire', targetNodeIndex: op.targetNodeIndex, inputPosition: op.inputPosition, sourceNodeIndex: op.sourceNodeIndex }
             : { type: 'addNode', newNodeIndex: op.newNodeIndex, opType: op.opType, inputCount: op.inputCount },
     )
+    announce('Exporting... verification result will follow')
     exportModifiedModel(overridesByIndex, writerOps).then((buf) => {
       const blob = new Blob([buf], { type: 'application/octet-stream' })
       const url = URL.createObjectURL(blob)
@@ -1032,6 +1143,8 @@ function App() {
     }
     reader.readAsArrayBuffer(file)
   }
+
+  if (isNarrowViewport) return <DesktopGate />
 
   return (
     <div
@@ -1106,7 +1219,7 @@ function App() {
             {announcement?.text ?? ''}
           </div>
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-            <div style={{ flex: 1, height: '100%' }}>
+            <div style={{ flex: 1, height: '100%', position: 'relative' }}>
               <GraphCanvas
                 onnxNodes={filteredGraph.nodes}
                 onnxEdges={filteredGraph.edges}
@@ -1123,6 +1236,61 @@ function App() {
                 traceDescendants={descendants}
                 layoutDir={layoutDir}
               />
+              {visibleHints.size > 0 && (
+                <div
+                  data-testid="onboarding-hints"
+                  style={{
+                    position: 'absolute',
+                    bottom: 16,
+                    left: 56,
+                    zIndex: 1200,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    gap: 6,
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  {ONBOARDING_HINTS.map((hint, i) =>
+                    visibleHints.has(i) ? (
+                      <span
+                        key={hint}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '4px 6px 4px 10px',
+                          background: 'var(--bg-raised)',
+                          border: '1px solid rgba(255,176,0,0.25)',
+                          borderRadius: 2,
+                          fontSize: 10,
+                          letterSpacing: '0.06em',
+                          textTransform: 'uppercase',
+                          color: 'var(--color-amber)',
+                        }}
+                      >
+                        {hint}
+                        <button
+                          aria-label={`Dismiss hint: ${hint}`}
+                          onClick={() => dismissHint(i)}
+                          className="btn-ghost"
+                          style={{ fontSize: 10, padding: '0 4px', lineHeight: '14px' }}
+                        >
+                          x
+                        </button>
+                      </span>
+                    ) : null,
+                  )}
+                  <button
+                    data-testid="dismiss-all-hints"
+                    onClick={() => dismissHint('all')}
+                    className="btn-ghost"
+                    style={{ fontSize: 10, padding: '2px 8px', whiteSpace: 'nowrap' }}
+                  >
+                    Dismiss all
+                  </button>
+                </div>
+              )}
             </div>
             <div style={{ width: panelWidth, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.1)', height: '100%', position: 'relative', display: 'flex' }}>
               <div
