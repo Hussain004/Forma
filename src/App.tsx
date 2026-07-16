@@ -46,6 +46,18 @@ function StatValue({ value, unit, title }: { value: string; unit: string; title:
   )
 }
 
+const HINTS_DISMISSED_KEY = 'forma_hints_dismissed'
+
+// The interactions that make Forma an editor rather than a viewer, none of
+// which a first-time visitor can discover except by accident (hover-only
+// pencil, unlabeled drag handles). Shown once ever, over the canvas, on the
+// first model load; see visibleHints/dismissHint in App.
+const ONBOARDING_HINTS: string[] = [
+  'Drag from a node handle to another to rewire',
+  'Click an attribute value in the inspector to edit it',
+  'Press ? for all shortcuts',
+]
+
 const SHORTCUTS: [string, string][] = [
   ['/', 'Focus the node filter'],
   ['Click', 'Select a node'],
@@ -534,6 +546,12 @@ function App() {
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [pendingNodeType, setPendingNodeType] = useState<{ opType: string; inputCount: number } | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
+  // Indices into ONBOARDING_HINTS still visible. Populated on the first model
+  // load ever (localStorage-gated); once every chip is dismissed the flag
+  // persists and they never appear again -- the compromise between "the
+  // headline features are invisible" and a scripted tour that would poison
+  // the terminal aesthetic.
+  const [visibleHints, setVisibleHints] = useState<Set<number>>(new Set())
   const [announcement, setAnnouncement] = useState<{ text: string; tone: 'reject' | 'info' } | null>(null)
   const announceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [dragOverlay, setDragOverlay] = useState(false)
@@ -591,8 +609,27 @@ function App() {
     passthroughCounterRef.current = 0
     customNodeCounterRef.current = 0
     setPendingNodeType(null)
-    if (graph) setShowDropzone(false)
+    if (graph) {
+      setShowDropzone(false)
+      try {
+        if (localStorage.getItem(HINTS_DISMISSED_KEY) !== '1') {
+          setVisibleHints(new Set(ONBOARDING_HINTS.map((_, i) => i)))
+        }
+      } catch {
+        // localStorage unavailable (privacy mode): skip hints rather than crash.
+      }
+    }
   }, [graph])
+
+  const dismissHint = (index: number | 'all') => {
+    setVisibleHints((prev) => {
+      const next = index === 'all' ? new Set<number>() : new Set([...prev].filter((i) => i !== index))
+      if (next.size === 0) {
+        try { localStorage.setItem(HINTS_DISMISSED_KEY, '1') } catch { /* best effort */ }
+      }
+      return next
+    })
+  }
 
   // Avionics-annunciator-style status line: a single line of feedback for
   // actions that were previously silent (a rejected rewire, nodes skipped
@@ -1182,7 +1219,7 @@ function App() {
             {announcement?.text ?? ''}
           </div>
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-            <div style={{ flex: 1, height: '100%' }}>
+            <div style={{ flex: 1, height: '100%', position: 'relative' }}>
               <GraphCanvas
                 onnxNodes={filteredGraph.nodes}
                 onnxEdges={filteredGraph.edges}
@@ -1199,6 +1236,61 @@ function App() {
                 traceDescendants={descendants}
                 layoutDir={layoutDir}
               />
+              {visibleHints.size > 0 && (
+                <div
+                  data-testid="onboarding-hints"
+                  style={{
+                    position: 'absolute',
+                    bottom: 16,
+                    left: 56,
+                    zIndex: 1200,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    gap: 6,
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  {ONBOARDING_HINTS.map((hint, i) =>
+                    visibleHints.has(i) ? (
+                      <span
+                        key={hint}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '4px 6px 4px 10px',
+                          background: 'var(--bg-raised)',
+                          border: '1px solid rgba(255,176,0,0.25)',
+                          borderRadius: 2,
+                          fontSize: 10,
+                          letterSpacing: '0.06em',
+                          textTransform: 'uppercase',
+                          color: 'var(--color-amber)',
+                        }}
+                      >
+                        {hint}
+                        <button
+                          aria-label={`Dismiss hint: ${hint}`}
+                          onClick={() => dismissHint(i)}
+                          className="btn-ghost"
+                          style={{ fontSize: 10, padding: '0 4px', lineHeight: '14px' }}
+                        >
+                          x
+                        </button>
+                      </span>
+                    ) : null,
+                  )}
+                  <button
+                    data-testid="dismiss-all-hints"
+                    onClick={() => dismissHint('all')}
+                    className="btn-ghost"
+                    style={{ fontSize: 10, padding: '2px 8px', whiteSpace: 'nowrap' }}
+                  >
+                    Dismiss all
+                  </button>
+                </div>
+              )}
             </div>
             <div style={{ width: panelWidth, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.1)', height: '100%', position: 'relative', display: 'flex' }}>
               <div

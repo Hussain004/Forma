@@ -18,6 +18,7 @@ let mockWorker: ReturnType<typeof makeMockWorker>
 beforeEach(() => {
   mockWorker = makeMockWorker()
   vi.stubGlobal('Worker', vi.fn(function () { return mockWorker }))
+  localStorage.clear()
 })
 
 afterEach(() => {
@@ -143,6 +144,42 @@ describe('App -- model load flow', () => {
 // dumping the DOM directly, and no existing test in this codebase exercises
 // edge clicks for the same reason. Verified live against a production
 // preview build instead (see PROGRESS.md).
+
+describe('App -- one-time onboarding hint chips', () => {
+  it('shows the hints on first model load and hides them after dismiss-all, persisting the choice', () => {
+    render(<App />)
+    expect(screen.queryByTestId('onboarding-hints')).not.toBeInTheDocument()
+
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    expect(screen.getByTestId('onboarding-hints')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('dismiss-all-hints'))
+    expect(screen.queryByTestId('onboarding-hints')).not.toBeInTheDocument()
+    expect(localStorage.getItem('forma_hints_dismissed')).toBe('1')
+  })
+
+  it('dismissing every chip individually also persists the flag', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    const closeButtons = screen.getAllByRole('button', { name: /dismiss hint:/i })
+    closeButtons.forEach((b) => fireEvent.click(b))
+    expect(screen.queryByTestId('onboarding-hints')).not.toBeInTheDocument()
+    expect(localStorage.getItem('forma_hints_dismissed')).toBe('1')
+  })
+
+  it('never shows the hints once the flag is set', () => {
+    localStorage.setItem('forma_hints_dismissed', '1')
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    expect(screen.queryByTestId('onboarding-hints')).not.toBeInTheDocument()
+  })
+})
 
 describe('App -- desktop gate on narrow viewports', () => {
   const stubMatchMedia = (matches: boolean) => {
