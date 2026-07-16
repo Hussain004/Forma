@@ -144,6 +144,32 @@ describe('App -- model load flow', () => {
 // edge clicks for the same reason. Verified live against a production
 // preview build instead (see PROGRESS.md).
 
+describe('App -- export verify-roundtrip announcements', () => {
+  it('announces a valid verification result', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'VERIFY_RESULT', payload: { valid: true } } } as MessageEvent)
+    })
+    expect(screen.getByTestId('announcement')).toHaveTextContent(/export verified/i)
+  })
+
+  it('announces a failed verification with the runtime reason', () => {
+    render(<App />)
+    act(() => {
+      mockWorker.onmessage?.({ data: { type: 'MODEL_LOADED', payload: testGraph } } as MessageEvent)
+    })
+    act(() => {
+      mockWorker.onmessage?.({
+        data: { type: 'VERIFY_RESULT', payload: { valid: false, message: 'No opset import for domain custom' } },
+      } as MessageEvent)
+    })
+    expect(screen.getByTestId('announcement')).toHaveTextContent(/onnxruntime rejected the model: No opset import/i)
+  })
+})
+
 describe('App -- drop anytime to replace the model', () => {
   it('shows a replace overlay on dragenter and posts LOAD_MODEL for the dropped file on drop', async () => {
     render(<App />)

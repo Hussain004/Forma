@@ -357,7 +357,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
         {canDownloadModified && (
           <button
             onClick={onDownloadModified}
-            title="Export the model with your edits applied"
+            title="Export the model with your edits applied. The exported bytes are verified by loading them through onnxruntime; the result appears in the status line."
             className="btn-bar btn-primary"
           >
             Export Modified ({editCount})
@@ -449,7 +449,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
 }
 
 function App() {
-  const { loadModel, runBenchmark, exportModel, exportModifiedModel, graph, status, error, operationError, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
+  const { loadModel, runBenchmark, exportModel, exportModifiedModel, graph, status, error, operationError, verifyResult, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
   // TFLite support is read-only: no inference session ever exists for it (no TFLite
   // runtime in this project), so attribute/structural editing, Benchmark, and Export
   // Modified are all withheld for it -- see tfliteParser.ts and onnxWorker.ts.
@@ -544,6 +544,15 @@ function App() {
   useEffect(() => {
     if (operationError) announce(operationError.message, 'reject')
   }, [operationError])
+
+  useEffect(() => {
+    if (!verifyResult) return
+    if (verifyResult.valid) {
+      announce('Export verified: loads cleanly in onnxruntime')
+    } else {
+      announce(`Export warning: onnxruntime rejected the model: ${verifyResult.message ?? 'unknown reason'}`, 'reject')
+    }
+  }, [verifyResult])
 
   // Shared by the Delete keyboard shortcut and the "Delete all" bulk button --
   // covers a single selected node too, since selectedNodeIds always contains the
@@ -975,6 +984,7 @@ function App() {
             ? { type: 'rewire', targetNodeIndex: op.targetNodeIndex, inputPosition: op.inputPosition, sourceNodeIndex: op.sourceNodeIndex }
             : { type: 'addNode', newNodeIndex: op.newNodeIndex, opType: op.opType, inputCount: op.inputCount },
     )
+    announce('Exporting... verification result will follow')
     exportModifiedModel(overridesByIndex, writerOps).then((buf) => {
       const blob = new Blob([buf], { type: 'application/octet-stream' })
       const url = URL.createObjectURL(blob)

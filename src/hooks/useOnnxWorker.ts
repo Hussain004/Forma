@@ -24,6 +24,7 @@ type WorkerResponse =
   | { type: 'BENCHMARK_RESULT'; payload: BenchmarkResult }
   | { type: 'QUANTIZE_ESTIMATE'; payload: QuantizeEstimate }
   | { type: 'EXPORT_RESULT'; payload: ArrayBuffer }
+  | { type: 'VERIFY_RESULT'; payload: { valid: boolean; message?: string } }
   | { type: 'ERROR'; payload: string; scope: 'load' | 'operation' }
   | { type: 'PROGRESS'; payload: { stage: string; percent: number } }
 
@@ -39,6 +40,10 @@ export function useOnnxWorker() {
   // message) so retrying the exact same failure twice in a row still
   // re-triggers whatever effect is watching this value.
   const [operationError, setOperationError] = useState<{ message: string; at: number } | null>(null)
+  // Result of the post-export verify-roundtrip (loading the exported bytes
+  // through a throwaway onnxruntime session in the worker). Same `at`
+  // convention as operationError.
+  const [verifyResult, setVerifyResult] = useState<{ valid: boolean; message?: string; at: number } | null>(null)
   const [progress, setProgress] = useState<{ stage: string; percent: number } | null>(null)
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null)
   const [quantizeEstimate, setQuantizeEstimate] = useState<QuantizeEstimate | null>(null)
@@ -70,6 +75,8 @@ export function useOnnxWorker() {
           exportReject.current = null
         }
         setStatus('ready')
+      } else if (msg.type === 'VERIFY_RESULT') {
+        setVerifyResult({ ...msg.payload, at: Date.now() })
       } else if (msg.type === 'INFERENCE_RESULT') {
         inferenceResolverRef.current?.(msg.payload.outputs)
         inferenceResolverRef.current = null
@@ -117,6 +124,7 @@ export function useOnnxWorker() {
     setStatus('loading')
     setError(null)
     setOperationError(null)
+    setVerifyResult(null)
     setGraph(null)
     setBenchmarkResult(null)
     setQuantizeEstimate(null)
@@ -163,5 +171,5 @@ export function useOnnxWorker() {
     })
   }, [])
 
-  return { loadModel, runInference, runBenchmark, exportModel, exportModifiedModel, graph, status, error, operationError, progress, benchmarkResult, quantizeEstimate }
+  return { loadModel, runInference, runBenchmark, exportModel, exportModifiedModel, graph, status, error, operationError, verifyResult, progress, benchmarkResult, quantizeEstimate }
 }
