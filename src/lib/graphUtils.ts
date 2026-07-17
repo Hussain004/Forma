@@ -8,12 +8,102 @@ export interface SelectableNode extends OnnxNode {
 
 export interface SelectableGraph {
   nodes: SelectableNode[]
+
   edges: OnnxGraph['edges']
   modelName: string
   totalParams: number
   totalSizeMB: number
 }
+export interface AttrHistoryEntry {
+  type: 'attr'
+  nodeId: string
+  attrName: string
+  value: string | number
+}
 
+export interface DeleteHistoryEntry {
+  type: 'delete'
+  nodeId: string
+  nodeIndex: number
+  keepInputPosition: number | null
+}
+
+export interface BulkDeleteHistoryEntry {
+  type: 'bulkDelete'
+  deletions: DeleteHistoryEntry[]
+}
+
+export interface InsertPassthroughHistoryEntry {
+  type: 'insertPassthrough'
+  targetNodeId: string
+  targetNodeIndex: number
+  inputPosition: number
+  newNodeId: string
+}
+
+export interface RewireHistoryEntry {
+  type: 'rewire'
+  sourceNodeId: string
+  sourceNodeIndex: number
+  targetNodeId: string
+  targetNodeIndex: number
+  inputPosition: number
+}
+
+export interface AddNodeHistoryEntry {
+  type: 'addNode'
+  newNodeId: string
+  newNodeIndex: number
+  opType: string
+  inputCount: number
+  position: { x: number; y: number }
+}
+
+export type StructuralHistoryEntry =
+  | DeleteHistoryEntry
+  | InsertPassthroughHistoryEntry
+  | RewireHistoryEntry
+  | AddNodeHistoryEntry
+
+// The history log is the sole source of truth for model edits. Its entries
+// preserve the live node ids needed by the canvas alongside the stable indexes
+// needed by the protobuf writer, so replay can drive both consumers unchanged.
+export type HistoryEntry =
+  | AttrHistoryEntry
+  | StructuralHistoryEntry
+  | BulkDeleteHistoryEntry
+
+export function friendlyNodeLabel(nodeId: string): string {
+  const original = /^node_\d+_(.+)$/.exec(nodeId)
+  if (original) return original[1]
+  const custom = /^custom_(\d+)$/.exec(nodeId)
+  if (custom) return `Custom node ${custom[1]}`
+  const passthrough = /^passthrough_(\d+)$/.exec(nodeId)
+  if (passthrough) return `Passthrough ${passthrough[1]}`
+  return 'Node'
+}
+
+function formatHistoryValue(value: string | number): string {
+  return typeof value === 'string' ? value : String(value)
+}
+
+export function describeHistoryEntry(entry: HistoryEntry): string {
+  switch (entry.type) {
+    case 'attr':
+      return `Changed ${friendlyNodeLabel(entry.nodeId)} ${entry.attrName} to ${formatHistoryValue(entry.value)}`
+    case 'delete':
+      return `Deleted ${friendlyNodeLabel(entry.nodeId)}`
+    case 'bulkDelete':
+      return `Deleted ${entry.deletions.length} nodes`
+    case 'insertPassthrough':
+      return `Inserted passthrough before ${friendlyNodeLabel(entry.targetNodeId)}`
+    case 'rewire':
+      return `Rewired ${friendlyNodeLabel(entry.targetNodeId)} input ${entry.inputPosition + 1} to ${friendlyNodeLabel(entry.sourceNodeId)}`
+    case 'addNode':
+      return `Added ${entry.opType} node`
+  }
+
+}
 export function toSelectableGraph(graph: OnnxGraph): SelectableGraph {
   return { ...graph, nodes: graph.nodes.map((n) => ({ ...n, selected: false })) }
 }
