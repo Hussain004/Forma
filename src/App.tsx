@@ -3,28 +3,22 @@ import { parseAttrEdit } from './lib/attrUtils'
 import { ModelDropzone } from './components/ModelDropzone'
 import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
+import { HistoryPanel } from './components/HistoryPanel'
 import { useOnnxWorker } from './hooks/useOnnxWorker'
 import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, validateRewire, rewireEdge, addCustomNode, structuralNodeIndex, CURATED_NODE_TYPES, type SelectableGraph } from './lib/graphUtils'
+import type { HistoryEntry, StructuralHistoryEntry } from './lib/graphUtils'
 import { formatQuantizeEstimate } from './lib/quantize'
 import type { OnnxNode } from './lib/onnxTypes'
 import type { QuantizeEstimate } from './hooks/useOnnxWorker'
 import type { StructuralOp } from './lib/onnxProtoWriter'
 import './index.css'
 
-// UI-layer structural edit record: carries both the live graph ids (for the
-// visualization-layer reducers in graphUtils.ts) and the original 0-based node
-// indices (for translating to the protobuf writer's index-only StructuralOp at
-// export time). See onnxProtoWriter.ts for why positions, not tensor-name values,
-// are what make ops replay correctly in sequence.
-type GraphEdit =
-  | { type: 'delete'; nodeId: string; nodeIndex: number; keepInputPosition: number | null }
-  | { type: 'insertPassthrough'; targetNodeId: string; targetNodeIndex: number; inputPosition: number; newNodeId: string }
-  | { type: 'rewire'; sourceNodeId: string; sourceNodeIndex: number; targetNodeId: string; targetNodeIndex: number; inputPosition: number }
-  | { type: 'addNode'; newNodeId: string; newNodeIndex: number; opType: string; inputCount: number; position: { x: number; y: number } }
+type GraphEdit = StructuralHistoryEntry
 
-type UndoEntry =
-  | { kind: 'attr'; nodeId: string; attrName: string; prevValue: string | number }
-  | { kind: 'structural' }
+interface EditHistory {
+  entries: HistoryEntry[]
+  index: number
+}
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -67,6 +61,7 @@ const SHORTCUTS: [string, string][] = [
   ['Delete', 'Delete the selected node(s)'],
   ['Ctrl+Z', 'Undo the last edit'],
   ['Esc', 'Cancel / clear selection'],
+  ['Ctrl+Shift+Z / Ctrl+Y', 'Redo the next edit'],
   ['?', 'Toggle this panel'],
 ]
 
@@ -206,13 +201,15 @@ interface StatsBarProps {
   canDownload: boolean
   onDownloadModified: () => void
   canDownloadModified: boolean
+  onRevert: () => void
+  canRevert: boolean
   onReset: () => void
   isReadOnly: boolean
   onAddNode: (opType: string, inputCount: number) => void
   editCount: number
 }
 
-function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, isBenchmarking, onDownload, canDownload, onDownloadModified, canDownloadModified, onReset, isReadOnly, onAddNode, editCount }: StatsBarProps) {
+function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, isBenchmarking, onDownload, canDownload, onDownloadModified, canDownloadModified, onRevert, canRevert, onReset, isReadOnly, onAddNode, editCount }: StatsBarProps) {
   const quantizeLabel = formatQuantizeEstimate(quantizeEstimate)
   const [showAddNode, setShowAddNode] = useState(false)
   const [addNodeQuery, setAddNodeQuery] = useState('')
@@ -429,6 +426,14 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
             )}
           </div>
         )}
+        <button
+          data-testid="revert-edits"
+          onClick={onRevert}
+          disabled={!canRevert}
+          className="btn-bar btn-ghost"
+        >
+          Revert edits
+        </button>
         {canDownloadModified && (
           <button
             onClick={onDownloadModified}
@@ -541,9 +546,8 @@ function App() {
   const [showDropzone, setShowDropzone] = useState(true)
   const [panelWidth, setPanelWidth] = useState(280)
   const [jumpToNodeId, setJumpToNodeId] = useState<string | null>(null)
-  const [attrOverrides, setAttrOverrides] = useState<Map<string, Record<string, string | number>>>(new Map())
-  const [structuralOps, setStructuralOps] = useState<GraphEdit[]>([])
-  const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
+  const [history, setHistory] = useState<EditHistory>({ entries: [], index: 0 })
+  const [activePanel, setActivePanel] = useState<'inspector' | 'history'>('inspector')
   const [pendingNodeType, setPendingNodeType] = useState<{ opType: string; inputCount: number } | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
   // Indices into ONBOARDING_HINTS still visible. Populated on the first model
@@ -560,8 +564,6 @@ function App() {
   // the root entirely" from "moved between two children of the root".
   const dragDepthRef = useRef(0)
   const filterInputRef = useRef<HTMLInputElement>(null)
-  const undoStackRef = useRef(undoStack)
-  undoStackRef.current = undoStack
   const selectedNodeIdsRef = useRef(selectedNodeIds)
   selectedNodeIdsRef.current = selectedNodeIds
   const structuralGraphRef = useRef<SelectableGraph | null>(null)
@@ -603,9 +605,8 @@ function App() {
     setExcludedNodeIds(new Set())
     setSelectedNodeIds(new Set())
     setSelectedNodeId(null)
-    setAttrOverrides(new Map())
-    setStructuralOps([])
-    setUndoStack([])
+    setHistory(() => ({ entries: [], index: 0 }))
+    setActivePanel('inspector')
     passthroughCounterRef.current = 0
     customNodeCounterRef.current = 0
     setPendingNodeType(null)
@@ -642,6 +643,13 @@ function App() {
     announceTimeoutRef.current = setTimeout(() => setAnnouncement(null), 4000)
   }
 
+  const appendHistoryEntry = (entry: HistoryEntry) => {
+    setHistory((previous) => {
+      const entries = previous.entries.slice(0, previous.index)
+      return { entries: [...entries, entry], index: entries.length + 1 }
+    })
+  }
+
   useEffect(() => {
     if (operationError) announce(operationError.message, 'reject')
   }, [operationError])
@@ -665,27 +673,28 @@ function App() {
   const applyBulkDelete = (ids: Set<string>) => {
     const g = structuralGraphRef.current
     if (!g || ids.size === 0) return
-    const newOps: GraphEdit[] = []
-    const newUndo: UndoEntry[] = []
+    const deletions: Extract<HistoryEntry, { type: 'delete' }>[] = []
     for (const nodeId of ids) {
       const eligibility = getDeleteEligibility(g, nodeId)
       if (!eligibility.eligible || eligibility.candidateInputs.length > 1) continue
       const nodeIndex = structuralNodeIndex(nodeId)
       if (nodeIndex === null) continue
       const keepInputPosition = eligibility.candidateInputs.length === 1 ? eligibility.candidateInputs[0].position : null
-      newOps.push({ type: 'delete', nodeId, nodeIndex, keepInputPosition })
-      newUndo.push({ kind: 'structural' })
+      deletions.push({ type: 'delete', nodeId, nodeIndex, keepInputPosition })
     }
-    const skipped = ids.size - newOps.length
-    if (newOps.length === 0) {
+    const skipped = ids.size - deletions.length
+    if (deletions.length === 0) {
       announce(`${skipped} of ${ids.size} node${ids.size === 1 ? '' : 's'} skipped: ambiguous or ineligible`, 'reject')
       return
     }
     if (skipped > 0) {
-      announce(`Deleted ${newOps.length} of ${ids.size} -- ${skipped} skipped: ambiguous or ineligible`, 'reject')
+      announce(`Deleted ${deletions.length} of ${ids.size}: ${skipped} skipped: ambiguous or ineligible`, 'reject')
     }
-    setStructuralOps(prev => [...prev, ...newOps])
-    setUndoStack(prev => [...prev, ...newUndo])
+    if (ids.size === 1) {
+      appendHistoryEntry(deletions[0]!)
+    } else {
+      appendHistoryEntry({ type: 'bulkDelete', deletions })
+    }
     setSelectedNodeId(null)
     setSelectedNodeIds(new Set())
   }
@@ -693,27 +702,35 @@ function App() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName
-      if (e.key === 'z' && (e.ctrlKey || e.metaKey) && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+      const editableTarget = tag === 'INPUT' || tag === 'TEXTAREA'
+      const key = e.key.toLowerCase()
+      if (key === 'z' && (e.ctrlKey || e.metaKey) && !editableTarget) {
         e.preventDefault()
-        const stack = undoStackRef.current
-        if (stack.length === 0) return
-        const last = stack[stack.length - 1]
-        setUndoStack(prev => prev.slice(0, -1))
-        if (last.kind === 'attr') {
-          setAttrOverrides(prev => {
-            const next = new Map(prev)
-            const existing = { ...(next.get(last.nodeId) ?? {}) }
-            existing[last.attrName] = last.prevValue
-            next.set(last.nodeId, existing)
-            return next
-          })
-          announce(`Undid ${last.attrName} edit`)
+        if (e.shiftKey) {
+          setHistory((previous) => (
+            previous.index === previous.entries.length
+              ? previous
+              : { ...previous, index: previous.index + 1 }
+          ))
+          announce('Redo')
         } else {
-          // Structural ops are strict append-order, so popping the last undo
-          // entry and the last op always correspond, regardless of delete/insert.
-          setStructuralOps(prev => prev.slice(0, -1))
-          announce('Undid last structural edit')
+          setHistory((previous) => (
+            previous.index === 0
+              ? previous
+              : { ...previous, index: previous.index - 1 }
+          ))
+          announce('Undo')
         }
+        return
+      }
+      if (key === 'y' && (e.ctrlKey || e.metaKey) && !editableTarget) {
+        e.preventDefault()
+        setHistory((previous) => (
+          previous.index === previous.entries.length
+            ? previous
+            : { ...previous, index: previous.index + 1 }
+        ))
+        announce('Redo')
         return
       }
       if (e.key === 'Delete' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
@@ -750,6 +767,28 @@ function App() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
+
+  const activeHistory = useMemo(() => history.entries.slice(0, history.index), [history])
+
+  const attrOverrides = useMemo(() => {
+    const overrides = new Map<string, Record<string, string | number>>()
+    for (const entry of activeHistory) {
+      if (entry.type !== 'attr') continue
+      const nodeOverrides = { ...(overrides.get(entry.nodeId) ?? {}) }
+      nodeOverrides[entry.attrName] = entry.value
+      overrides.set(entry.nodeId, nodeOverrides)
+    }
+    return overrides
+  }, [activeHistory])
+
+  const structuralOps = useMemo((): GraphEdit[] => {
+    const operations: GraphEdit[] = []
+    for (const entry of activeHistory) {
+      if (entry.type === 'bulkDelete') operations.push(...entry.deletions)
+      else if (entry.type !== 'attr') operations.push(entry)
+    }
+    return operations
+  }, [activeHistory])
 
   const graphWithOverrides = useMemo((): SelectableGraph | null => {
     if (!selectableGraph || attrOverrides.size === 0) return selectableGraph
@@ -882,6 +921,7 @@ function App() {
   }
 
   const applySelection = (ids: Set<string>, primary: string | null) => {
+    setActivePanel('inspector')
     setSelectedNodeIds(ids)
     setSelectedNodeId(primary)
     setSelectableGraph((sg) => (sg ? setMultiSelection(sg, ids) : sg))
@@ -943,21 +983,13 @@ function App() {
     const resolved = prevValue !== undefined && typeof prevValue !== 'boolean' ? prevValue : ''
     const parsed = parseAttrEdit(String(newValue), resolved)
     if (parsed === resolved) return
-    setUndoStack(prev => [...prev, { kind: 'attr', nodeId, attrName, prevValue: resolved }])
-    setAttrOverrides(prev => {
-      const next = new Map(prev)
-      const existing = { ...(next.get(nodeId) ?? {}) }
-      existing[attrName] = newValue
-      next.set(nodeId, existing)
-      return next
-    })
+    appendHistoryEntry({ type: 'attr', nodeId, attrName, value: parsed })
   }
 
   const handleDeleteNode = (nodeId: string, keepInputPosition: number | null) => {
     const nodeIndex = structuralNodeIndex(nodeId)
     if (nodeIndex === null) return
-    setStructuralOps(prev => [...prev, { type: 'delete', nodeId, nodeIndex, keepInputPosition }])
-    setUndoStack(prev => [...prev, { kind: 'structural' }])
+    appendHistoryEntry({ type: 'delete', nodeId, nodeIndex, keepInputPosition })
     if (selectedNodeId === nodeId || selectedNodeIds.has(nodeId)) {
       setSelectedNodeId(null)
       setSelectedNodeIds(new Set())
@@ -979,11 +1011,7 @@ function App() {
     const sourceNodeIndex = structuralNodeIndex(sourceNodeId)
     const targetNodeIndex = structuralNodeIndex(targetNodeId)
     if (sourceNodeIndex === null || targetNodeIndex === null) return
-    setStructuralOps(prev => [
-      ...prev,
-      { type: 'rewire', sourceNodeId, sourceNodeIndex, targetNodeId, targetNodeIndex, inputPosition },
-    ])
-    setUndoStack(prev => [...prev, { kind: 'structural' }])
+    appendHistoryEntry({ type: 'rewire', sourceNodeId, sourceNodeIndex, targetNodeId, targetNodeIndex, inputPosition })
   }
 
   const handleInsertPassthrough = (targetNodeId: string, inputPosition: number) => {
@@ -991,11 +1019,7 @@ function App() {
     if (targetNodeIndex === null) return
     passthroughCounterRef.current += 1
     const newNodeId = `passthrough_${passthroughCounterRef.current}`
-    setStructuralOps(prev => [
-      ...prev,
-      { type: 'insertPassthrough', targetNodeId, targetNodeIndex, inputPosition, newNodeId },
-    ])
-    setUndoStack(prev => [...prev, { kind: 'structural' }])
+    appendHistoryEntry({ type: 'insertPassthrough', targetNodeId, targetNodeIndex, inputPosition, newNodeId })
   }
 
   // Places a new, initially unconnected node on the canvas -- wiring its inputs and
@@ -1014,11 +1038,7 @@ function App() {
     if (!pendingNodeType) return
     customNodeCounterRef.current += 1
     const newNodeIndex = customNodeCounterRef.current
-    setStructuralOps(prev => [
-      ...prev,
-      { type: 'addNode', newNodeId: `custom_${newNodeIndex}`, newNodeIndex, opType: pendingNodeType.opType, inputCount: pendingNodeType.inputCount, position },
-    ])
-    setUndoStack(prev => [...prev, { kind: 'structural' }])
+    appendHistoryEntry({ type: 'addNode', newNodeId: `custom_${newNodeIndex}`, newNodeIndex, opType: pendingNodeType.opType, inputCount: pendingNodeType.inputCount, position })
     setPendingNodeType(null)
   }
 
@@ -1054,6 +1074,30 @@ function App() {
   const handleReset = () => {
     setShowDropzone(true)
     setSelectableGraph(null)
+  }
+
+  const handleRevertEdits = () => {
+    setHistory((previous) => (
+      previous.index === 0
+        ? previous
+        : { ...previous, index: 0 }
+    ))
+    setSelectedNodeIds(new Set())
+    setSelectedNodeId(null)
+    setSelectableGraph((sg) => (sg ? deselectAll(sg) : sg))
+    setPendingNodeType(null)
+    announce('Reverted edits')
+  }
+
+  const handleHistoryJump = (index: number) => {
+    setHistory((previous) => ({
+      ...previous,
+      index: Math.max(0, Math.min(index, previous.entries.length)),
+    }))
+    setSelectedNodeIds(new Set())
+    setSelectedNodeId(null)
+    setSelectableGraph((sg) => (sg ? deselectAll(sg) : sg))
+    setPendingNodeType(null)
   }
 
   const handleDownload = () => {
@@ -1191,11 +1235,13 @@ function App() {
             onDownload={handleDownload}
             canDownload={status === 'ready'}
             onDownloadModified={handleDownloadModified}
-            canDownloadModified={status === 'ready' && !isReadOnly && (attrOverrides.size > 0 || structuralOps.length > 0)}
+            canDownloadModified={status === 'ready' && !isReadOnly && history.index > 0}
+            onRevert={handleRevertEdits}
+            canRevert={history.index > 0}
             onReset={handleReset}
             onAddNode={handleAddNode}
             isReadOnly={isReadOnly}
-            editCount={attrOverrides.size + structuralOps.length}
+            editCount={history.index}
           />
           <div
             data-testid="announcement"
@@ -1292,7 +1338,7 @@ function App() {
                 </div>
               )}
             </div>
-            <div style={{ width: panelWidth, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.1)', height: '100%', position: 'relative', display: 'flex' }}>
+            <div style={{ width: panelWidth, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.1)', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}>
               <div
                 onMouseDown={handleResizeStart}
                 style={{
@@ -1309,8 +1355,53 @@ function App() {
                 onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,176,0,0.25)' }}
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               />
-              <div style={{ flex: 1, overflow: 'hidden' }}>
-                <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} onCopy={() => announce('Copied to clipboard')} />
+              <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div role="tablist" aria-label="Sidebar panels" style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activePanel === 'inspector'}
+                    onClick={() => setActivePanel('inspector')}
+                    className="btn-ghost"
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderBottom: activePanel === 'inspector' ? '2px solid var(--color-amber)' : '2px solid transparent',
+                      color: activePanel === 'inspector' ? 'var(--color-amber)' : 'var(--text-dim)',
+                      fontSize: 10,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Inspector
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    data-testid="history-tab"
+                    aria-selected={activePanel === 'history'}
+                    onClick={() => setActivePanel('history')}
+                    className="btn-ghost"
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderBottom: activePanel === 'history' ? '2px solid var(--color-amber)' : '2px solid transparent',
+                      color: activePanel === 'history' ? 'var(--color-amber)' : 'var(--text-dim)',
+                      fontSize: 10,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    History ({history.entries.length})
+                  </button>
+                </div>
+                <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                  {activePanel === 'history' ? (
+                    <HistoryPanel entries={history.entries} index={history.index} onJump={handleHistoryJump} />
+                  ) : (
+                    <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} onCopy={() => announce('Copied to clipboard')} />
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1337,7 +1428,7 @@ function App() {
           <span style={{ color: 'var(--color-amber)', textTransform: 'uppercase', letterSpacing: '0.16em', fontSize: 15, fontFamily: 'var(--font-mono)' }}>
             Drop to replace current model
           </span>
-          {attrOverrides.size + structuralOps.length > 0 && (
+          {history.index > 0 && (
             <span style={{ color: 'var(--color-error)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
               Unsaved edits will be lost
             </span>

@@ -4,14 +4,14 @@
 
 # Forma
 
-### Browser-Native ONNX & TFLite Model Visualizer
+### Browser-Native ONNX & TFLite Graph Editor
 
-**Inspect, analyze, and export neural network models entirely in the browser. No Python. No server. No installation.**
+**Inspect, edit, and export neural network models entirely in the browser. No Python. No server. No installation.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-1.5.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-1.6.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -32,13 +32,15 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 ### Graph Visualization
 
 - Drag-and-drop `.onnx` or `.tflite` loading with real-time progress indication
-- Automatic layout via dagre with TB (top-down) and LR (left-right) toggle
+- Automatic dagre layout with TB (top-down) and LR (left-right) toggle, moved to a worker for large graphs with a synchronous fallback
+- Large-graph layout runs off the main thread above 500 nodes, with a clear fallback if the worker cannot complete
+- Desktop-first gate below 900px and first-load hint chips for editing gestures that are otherwise hard to discover
 - Pan, zoom, and minimap navigation for large models
 - Distinct visual treatment for operator nodes versus input/output tensor nodes
 - Op category coloring: each node's left accent bar indicates its operator category (Convolution, Activation, Normalization, Linear, Pooling, Reshape, and more)
 - Search dropdown: live-filtered results with keyboard navigation (arrow keys, Enter to jump, Escape to dismiss)
 - Filter nodes by operator type, name, or tensor name with live dimming of non-matching nodes
-- Keyboard shortcuts: `/` focuses the filter input, Escape clears and deselects
+- Keyboard shortcuts: `/` focuses the filter input, Escape clears and deselects, Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y redo
 - Hover tooltip: instant op type, parameter count, and output shape on mouse-over without clicking
 - Edge shape labels: selecting a node shows tensor shapes on all edges directly connected to it
 
@@ -49,7 +51,7 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Structural editing: delete a node with automatic reconnection, or a picker to choose the reconnection source when it has multiple inputs; insert a passthrough Identity node by clicking any edge. A green "NEW" badge marks inserted nodes in the canvas
 - Manual rewiring: drag a connection from any node's output to a specific input handle on another node to redirect that input; each input on a multi-input node (Add, Concat, etc.) gets its own handle so the drop target is never ambiguous. Self-connections and connections that would create a cycle are rejected automatically
 - Add custom node: place a new, initially unconnected node on the canvas from a curated op list or free-text entry, then wire its inputs and output into the graph with the same drag-to-connect gesture as manual rewiring. A green "NEW" badge marks it, same as an inserted passthrough
-- Ctrl+Z undo: step back through attribute, structural, rewire, and add-node edits alike, in the order they were made
+- Edit history: a tabbed timeline records attribute, structural, rewire, and add-node edits; jump to any point, undo, redo, or revert to the original model
 - Modified badge: edited nodes are marked with a "MOD" indicator in the canvas and a "Modified" label in the inspector
 - Ctrl/Meta+click for multi-select: build a selection across multiple nodes simultaneously
 - Aggregate inspector: combined parameter count, total size, and op type breakdown when multiple nodes are selected
@@ -76,6 +78,7 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Initializer weight bytes are preserved byte-for-byte on export; only what changed is re-encoded, everything else passes through untouched
 - Inserted, added, and rewired nodes are placed to preserve ONNX's required topological node order, so exported files pass strict validation, not just onnxruntime's own lenient loading
 - Exported filename strips the original extension cleanly (e.g. `model_export.onnx`, never `model.onnx_export.onnx`)
+- Modified ONNX exports are round-trip verified through onnxruntime before the result is reported in the status line
 - Export is performed off-thread; the UI remains responsive throughout
 - Copy node metadata to clipboard with a single button press in the Layer Inspector
 
@@ -88,7 +91,7 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Both parsers build the same graph representation through a shared generic layer, so the graph canvas and inspector need no format-specific code
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
-- 251 tests across 17 files; zero TypeScript errors on strict mode
+- 277 tests across 18 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -192,6 +195,7 @@ src/
   components/
     GraphCanvas.tsx       React Flow canvas, dagre layout, MiniMap, JumpController, hover tooltip
     LayerInspector.tsx    Per-node detail, aggregate multi-select view, model summary histogram
+    HistoryPanel.tsx       Timeline of applied and redoable edits with point-in-time navigation
     ModelDropzone.tsx     Drag-and-drop with progress indication
   hooks/
     useOnnxWorker.ts      Typed React hook wrapping the ONNX Web Worker
@@ -233,6 +237,7 @@ src/
     v1.5.test.ts          Add custom node: writer addNode round-trip, custom-node topological
                           placement in both wiring directions, structuralNodeIndex addressing,
                           Add Node picker UI (curated pick and free text)
+    v1.6.test.ts          History labels and panel state, undo/redo, jumps, reset, and redo truncation
 ```
 
 ---
@@ -241,7 +246,7 @@ src/
 
 ```bash
 npm run dev      # Dev server with COOP/COEP headers
-npm test         # 251 tests across 17 files
+npm test         # 277 tests across 18 files
 npx tsc --noEmit # Type-check without building
 npm run build    # Production build
 ```
@@ -252,6 +257,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 1.6.0 | Unified edit history with undo, redo, jump-to-any-point timeline, and revert-to-original controls |
 | 1.5.0 | Add custom node: curated op list or free text, wired into the graph via drag-to-connect, writer support for inserting an arbitrary node with correct topological placement |
 | 1.4.0 | Manual rewiring: drag-to-connect any output to a specific input handle, cycle/self-connect validation, bulk delete for multi-select |
 | 1.3.0 | TFLite support (read-only): binary FlatBuffers parser, shared graph/canvas/inspector with ONNX |
