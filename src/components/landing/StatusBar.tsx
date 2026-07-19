@@ -41,7 +41,7 @@ export function StatusBar() {
           source
         </a>
         <a
-          href="https://forma-ml.vercel.app"
+          href="https://github.com/Hussain004/Forma/blob/v1.6/README.md"
           target="_blank"
           rel="noreferrer"
           className="landing-statusbar-link"
