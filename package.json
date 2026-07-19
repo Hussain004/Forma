@@ -16,11 +16,14 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@types/three": "^0.185.1",
     "@xyflow/react": "^12.11.1",
     "dagre": "^0.8.5",
+    "framer-motion": "^12.42.2",
     "onnxruntime-web": "^1.27.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

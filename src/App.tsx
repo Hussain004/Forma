@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { parseAttrEdit } from './lib/attrUtils'
-import { ModelDropzone } from './components/ModelDropzone'
+import { LandingPage } from './components/landing/LandingPage'
+import './styles/landing.css'
 import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
 import { HistoryPanel } from './components/HistoryPanel'
@@ -1200,7 +1201,7 @@ function App() {
     >
       {(showDropzone || !isReady) && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 10 }}>
-          <ModelDropzone
+          <LandingPage
             onModelLoaded={handleModelLoaded}
             status={dropzoneStatus}
             error={error}
