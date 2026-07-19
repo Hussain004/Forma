@@ -74,8 +74,8 @@ const handleStyle = {
   border: 'none',
 }
 
-type OperatorData = { opType: string; paramCount: number; shapeLabel: string; dimmed: boolean; excluded: boolean; traceRole: TraceRole; traceActive: boolean; isModified: boolean; isSynthetic: boolean; inputCount: number }
-type IOData = { label: string; shapeLabel: string; dimmed: boolean; excluded: boolean; traceRole: TraceRole; traceActive: boolean }
+type OperatorData = { opType: string; paramCount: number; shapeLabel: string; dimmed: boolean; excluded: boolean; traceRole: TraceRole; traceActive: boolean; isModified: boolean; isSynthetic: boolean; isDeleted: boolean; inputCount: number }
+type IOData = { label: string; shapeLabel: string; dimmed: boolean; excluded: boolean; traceRole: TraceRole; traceActive: boolean; isDeleted: boolean }
 
 const strikeStyle: React.CSSProperties = {
   position: 'absolute',
@@ -88,30 +88,36 @@ const strikeStyle: React.CSSProperties = {
 }
 
 function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
-  const opacity = data.excluded
+  const opacity = data.isDeleted
+    ? 0.35
+    : data.excluded
     ? 0.5
     : data.dimmed
       ? 0.25
       : data.traceActive && !selected && data.traceRole === null
         ? 0.4
         : 1
-  const border = data.excluded
+  const border = data.isDeleted
+    ? '1px dashed rgba(192,57,43,0.7)'
+    : data.excluded
     ? '1px solid rgba(255,255,255,0.08)'
     : '1px solid rgba(255,255,255,0.12)'
-  const accent = data.excluded
+  const accent = data.isDeleted
+    ? 'var(--color-error)'
+    : data.excluded
     ? 'rgba(255,255,255,0.08)'
     : traceAccent(data.traceRole) ?? (selected ? 'var(--color-amber)' : opCategoryColor(data.opType))
   // Badges are absolutely positioned in the top corners; without reserved
   // headroom they sit directly on the op-type title (centered content leaves
   // only ~8px of slack, less than a badge's height).
-  const hasBadge = data.isModified || data.isSynthetic
+  const hasBadge = data.isModified || data.isSynthetic || data.isDeleted
   return (
     <div
       style={{
         position: 'relative',
         width: NODE_WIDTH,
         minHeight: NODE_HEIGHT,
-        background: 'var(--bg-surface)',
+        background: data.isDeleted ? 'transparent' : 'var(--bg-surface)',
         border,
         borderRadius: 2,
         padding: hasBadge ? '24px 12px 8px' : '8px 12px',
@@ -133,6 +139,11 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
       {data.isSynthetic && (
         <div style={{ position: 'absolute', top: 5, left: 7, fontSize: 9, letterSpacing: '0.08em', color: 'var(--color-green)', background: 'rgba(82,197,122,0.12)', padding: '1px 4px', borderRadius: 1 }}>
           NEW
+        </div>
+      )}
+      {data.isDeleted && (
+        <div data-testid="deleted-node-badge" style={{ position: 'absolute', top: 5, right: 5, fontSize: 9, letterSpacing: '0.08em', color: 'var(--color-error)', background: 'rgba(192,57,43,0.12)', padding: '1px 4px', borderRadius: 1 }}>
+          DEL
         </div>
       )}
       {data.excluded && <div style={strikeStyle} />}
@@ -165,7 +176,9 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
 }
 
 function IONode({ data, selected }: NodeProps<Node<IOData>>) {
-  const opacity = data.excluded
+  const opacity = data.isDeleted
+    ? 0.35
+    : data.excluded
     ? 0.5
     : data.dimmed
       ? 0.25
@@ -181,7 +194,7 @@ function IONode({ data, selected }: NodeProps<Node<IOData>>) {
         position: 'relative',
         width: NODE_WIDTH,
         minHeight: NODE_HEIGHT,
-        background: 'var(--bg-raised)',
+        background: data.isDeleted ? 'transparent' : 'var(--bg-raised)',
         border: data.excluded
           ? '1px solid rgba(255,255,255,0.08)'
           : selected ? '1px solid var(--color-amber)' : '1px solid rgba(255,255,255,0.15)',
@@ -230,6 +243,7 @@ interface GraphCanvasProps {
   traceAncestors?: Set<string>
   traceDescendants?: Set<string>
   layoutDir?: 'TB' | 'LR'
+  diffActive?: boolean
 }
 
 // Nodes parsed directly from the loaded model use the `node_<idx>_<opType>` id
@@ -266,12 +280,16 @@ function toFlowGraph(
     return {
       id: n.id,
       type: isIO ? 'io' : 'operator',
+      draggable: n.diffStatus !== 'deleted',
+      connectable: n.diffStatus !== 'deleted',
+      selectable: n.diffStatus !== 'deleted',
+      focusable: n.diffStatus !== 'deleted',
       position: { x: 0, y: 0 },
       selected: (n as SelectableNode).selected ?? (n.id === selectedNodeId),
       ariaLabel,
       data: isIO
-        ? { label, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive }
-        : { opType: n.opType, paramCount: n.paramCount, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive, isModified: n.isModified ?? false, isSynthetic: !ORIGINAL_NODE_ID_RE.test(n.id), inputCount: n.inputs.length },
+        ? { label, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive, isDeleted: n.diffStatus === 'deleted' }
+        : { opType: n.opType, paramCount: n.paramCount, shapeLabel, dimmed: n.dimmed ?? false, excluded: n.excluded ?? false, traceRole, traceActive, isModified: n.isModified ?? false, isSynthetic: !ORIGINAL_NODE_ID_RE.test(n.id), isDeleted: n.diffStatus === 'deleted', inputCount: n.inputs.length },
     }
   })
 
@@ -286,6 +304,9 @@ function toFlowGraph(
       const adjacent = selectedNodeId && (e.source === selectedNodeId || e.target === selectedNodeId)
       const shapeLabel = adjacent && e.shape ? formatShape(e.shape) : undefined
       const inputPosition = e.label ? nodeById.get(e.target)?.inputs.indexOf(e.label) ?? -1 : -1
+      const stroke = e.diffStatus === 'changed'
+        ? '#3498DB'
+        : e.diffStatus === 'removed' ? 'rgba(192,57,43,0.6)' : 'var(--color-amber)'
       return {
         id: e.id,
         source: e.source,
@@ -295,7 +316,9 @@ function toFlowGraph(
         labelStyle: { fontSize: 10, fontFamily: 'JetBrains Mono, monospace', fill: 'var(--text-dim)' },
         labelBgStyle: { fill: 'var(--bg-base)', fillOpacity: 0.85 },
         labelBgPadding: [3, 4] as [number, number],
-        style: { stroke: 'var(--color-amber)', strokeWidth: 1, cursor: 'pointer' },
+        style: { stroke, strokeWidth: e.diffStatus === 'changed' ? 2 : 1, strokeDasharray: e.diffStatus === 'removed' ? '5 4' : undefined, cursor: e.diffStatus === 'removed' ? 'default' : 'pointer' },
+        zIndex: e.diffStatus === 'removed' ? 0 : 1,
+        data: { diffStatus: e.diffStatus },
       }
     })
 
@@ -325,7 +348,7 @@ function JumpController({ jumpToNodeId }: { jumpToNodeId?: string | null }) {
 
 const EMPTY_TRACE: Set<string> = new Set()
 
-export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, onBoxSelect, onEdgeClick, onRewire, pendingNodeType, onPlaceNode, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE, layoutDir = 'TB' }: GraphCanvasProps) {
+export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect, onNodeCtrlClick, onBoxSelect, onEdgeClick, onRewire, pendingNodeType, onPlaceNode, jumpToNodeId, traceAncestors = EMPTY_TRACE, traceDescendants = EMPTY_TRACE, layoutDir = 'TB', diffActive = false }: GraphCanvasProps) {
   const isLargeGraph = onnxNodes.length > LARGE_GRAPH_THRESHOLD
   const computed = useMemo(
     () => toFlowGraph(onnxNodes, onnxEdges, selectedNodeId, traceAncestors, traceDescendants, layoutDir, isLargeGraph ? 'deferred' : 'sync'),
@@ -483,6 +506,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
           // shape (only when adjacent to the selection), not the tensor name --
           // resolve the real name from the original OnnxEdge with the same id.
           const original = onnxEdges.find((e) => e.id === edge.id)
+          if (original?.diffStatus === 'removed') return
           if (!original?.label) return
           setEdgePopover({ edgeId: edge.id, targetNodeId: edge.target, tensorName: original.label, x: event.clientX, y: event.clientY })
         }}
@@ -532,6 +556,15 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
         />
         <JumpController jumpToNodeId={jumpToNodeId} />
       </ReactFlow>
+      {diffActive && (
+        <div data-testid="diff-legend" style={{ position: 'absolute', top: 8, left: 8, zIndex: 1200, display: 'flex', alignItems: 'center', gap: 12, padding: '4px 8px', background: 'var(--bg-raised)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 2, fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.06em', textTransform: 'uppercase', pointerEvents: 'none' }}>
+          <span style={{ color: 'var(--color-error)' }}>DEL</span>
+          <span style={{ color: 'var(--color-amber)' }}>MOD</span>
+          <span style={{ color: 'var(--color-green)' }}>NEW</span>
+          <span style={{ color: '#3498DB' }}>Changed edge</span>
+          <span style={{ color: 'rgba(192,57,43,0.8)' }}>Original edge</span>
+        </div>
+      )}
       {edgePopover && (
         <div
           data-testid="edge-insert-popover"
