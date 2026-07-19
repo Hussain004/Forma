@@ -5,8 +5,9 @@ import './styles/landing.css'
 import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
 import { HistoryPanel } from './components/HistoryPanel'
+import { ChangeLogPanel } from './components/ChangeLogPanel'
 import { useOnnxWorker } from './hooks/useOnnxWorker'
-import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, validateRewire, rewireEdge, addCustomNode, structuralNodeIndex, CURATED_NODE_TYPES, type SelectableGraph } from './lib/graphUtils'
+import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, validateRewire, rewireEdge, addCustomNode, structuralNodeIndex, buildGraphDiff, CURATED_NODE_TYPES, type SelectableGraph } from './lib/graphUtils'
 import type { HistoryEntry, StructuralHistoryEntry } from './lib/graphUtils'
 import { formatQuantizeEstimate } from './lib/quantize'
 import type { OnnxNode } from './lib/onnxTypes'
@@ -208,9 +209,12 @@ interface StatsBarProps {
   isReadOnly: boolean
   onAddNode: (opType: string, inputCount: number) => void
   editCount: number
+  onDiffToggle: () => void
+  diffActive: boolean
+  canDiff: boolean
 }
 
-function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, isBenchmarking, onDownload, canDownload, onDownloadModified, canDownloadModified, onRevert, canRevert, onReset, isReadOnly, onAddNode, editCount }: StatsBarProps) {
+function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, isBenchmarking, onDownload, canDownload, onDownloadModified, canDownloadModified, onRevert, canRevert, onReset, isReadOnly, onAddNode, editCount, onDiffToggle, diffActive, canDiff }: StatsBarProps) {
   const quantizeLabel = formatQuantizeEstimate(quantizeEstimate)
   const [showAddNode, setShowAddNode] = useState(false)
   const [addNodeQuery, setAddNodeQuery] = useState('')
@@ -335,6 +339,17 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
           className="btn-bar btn-ghost"
         >
           LAYOUT {layoutDir}
+        </button>
+        <button
+          type="button"
+          data-testid="diff-toggle"
+          aria-pressed={diffActive}
+          onClick={onDiffToggle}
+          disabled={!canDiff}
+          title="Compare the original graph with the active edits"
+          className={diffActive ? 'btn-bar btn-primary' : 'btn-bar btn-ghost'}
+        >
+          Diff {diffActive ? 'On' : 'Off'}
         </button>
         {!isReadOnly && (
           <div style={{ position: 'relative' }}>
@@ -548,7 +563,8 @@ function App() {
   const [panelWidth, setPanelWidth] = useState(280)
   const [jumpToNodeId, setJumpToNodeId] = useState<string | null>(null)
   const [history, setHistory] = useState<EditHistory>({ entries: [], index: 0 })
-  const [activePanel, setActivePanel] = useState<'inspector' | 'history'>('inspector')
+  const [showDiff, setShowDiff] = useState(false)
+  const [activePanel, setActivePanel] = useState<'inspector' | 'history' | 'changes'>('inspector')
   const [pendingNodeType, setPendingNodeType] = useState<{ opType: string; inputCount: number } | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
   // Indices into ONBOARDING_HINTS still visible. Populated on the first model
@@ -607,6 +623,7 @@ function App() {
     setSelectedNodeIds(new Set())
     setSelectedNodeId(null)
     setHistory(() => ({ entries: [], index: 0 }))
+    setShowDiff(false)
     setActivePanel('inspector')
     passthroughCounterRef.current = 0
     customNodeCounterRef.current = 0
@@ -824,6 +841,15 @@ function App() {
     () => (graphWithStructuralEdits ? filterGraph(graphWithStructuralEdits, filterQuery) : null),
     [graphWithStructuralEdits, filterQuery],
   )
+
+  const diffOverlayActive = showDiff && history.index > 0
+  const canvasGraph = useMemo(() => {
+    if (!graphWithStructuralEdits) return null
+    const comparison = diffOverlayActive && selectableGraph
+      ? buildGraphDiff(selectableGraph, graphWithStructuralEdits)
+      : graphWithStructuralEdits
+    return filterGraph(comparison, filterQuery)
+  }, [diffOverlayActive, filterQuery, graphWithStructuralEdits, selectableGraph])
 
   const dropdownResults = useMemo(() => {
     if (!filterQuery.trim() || !filteredGraph) return []
@@ -1210,7 +1236,7 @@ function App() {
           />
         </div>
       )}
-      {isReady && filteredGraph && !showDropzone && (
+      {isReady && filteredGraph && canvasGraph && !showDropzone && (
         <>
           <StatsBar
             modelName={graph?.modelName ?? ''}
@@ -1243,6 +1269,9 @@ function App() {
             onAddNode={handleAddNode}
             isReadOnly={isReadOnly}
             editCount={history.index}
+            onDiffToggle={() => setShowDiff((active) => !active)}
+            diffActive={diffOverlayActive}
+            canDiff={history.index > 0}
           />
           <div
             data-testid="announcement"
@@ -1268,8 +1297,8 @@ function App() {
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
             <div style={{ flex: 1, height: '100%', position: 'relative' }}>
               <GraphCanvas
-                onnxNodes={filteredGraph.nodes}
-                onnxEdges={filteredGraph.edges}
+                onnxNodes={canvasGraph.nodes}
+                onnxEdges={canvasGraph.edges}
                 selectedNodeId={selectedNodeId}
                 onNodeSelect={handleNodeSelect}
                 onNodeCtrlClick={handleNodeCtrlClick}
@@ -1282,6 +1311,7 @@ function App() {
                 traceAncestors={ancestors}
                 traceDescendants={descendants}
                 layoutDir={layoutDir}
+                diffActive={diffOverlayActive}
               />
               {visibleHints.size > 0 && (
                 <div
@@ -1395,10 +1425,31 @@ function App() {
                   >
                     History ({history.entries.length})
                   </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    data-testid="changes-tab"
+                    aria-selected={activePanel === 'changes'}
+                    onClick={() => setActivePanel('changes')}
+                    className="btn-ghost"
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderBottom: activePanel === 'changes' ? '2px solid var(--color-amber)' : '2px solid transparent',
+                      color: activePanel === 'changes' ? 'var(--color-amber)' : 'var(--text-dim)',
+                      fontSize: 10,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Changes ({history.index})
+                  </button>
                 </div>
                 <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
                   {activePanel === 'history' ? (
                     <HistoryPanel entries={history.entries} index={history.index} onJump={handleHistoryJump} />
+                  ) : activePanel === 'changes' ? (
+                    <ChangeLogPanel entries={activeHistory} onCopy={() => announce('Change log copied')} />
                   ) : (
                     <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} onCopy={() => announce('Copied to clipboard')} />
                   )}

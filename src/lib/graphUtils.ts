@@ -104,6 +104,45 @@ export function describeHistoryEntry(entry: HistoryEntry): string {
   }
 
 }
+
+function edgeSignature(edge: OnnxGraph['edges'][number]): string {
+  return `${edge.source}\u0000${edge.target}\u0000${edge.label ?? ''}`
+}
+
+// Builds a comparison graph without mutating the edited graph used for export,
+// stats, selection, or history. Deleted original nodes and connections are
+// restored only as display artifacts. Current connections that do not exist in
+// the original graph are marked as changed.
+export function buildGraphDiff(original: SelectableGraph, current: SelectableGraph): SelectableGraph {
+  const currentNodeIds = new Set(current.nodes.map((node) => node.id))
+  const currentEdgeSignatures = new Set(current.edges.map(edgeSignature))
+  const originalEdgeSignatures = new Set(original.edges.map(edgeSignature))
+
+  const deletedNodes = original.nodes
+    .filter((node) => !currentNodeIds.has(node.id))
+    .map((node) => ({ ...node, selected: false, diffStatus: 'deleted' as const }))
+
+  const currentEdges = current.edges.map((edge) => (
+    originalEdgeSignatures.has(edgeSignature(edge))
+      ? edge
+      : { ...edge, diffStatus: 'changed' as const }
+  ))
+
+  const removedEdges = original.edges
+    .filter((edge) => !currentEdgeSignatures.has(edgeSignature(edge)))
+    .map((edge, index) => ({
+      ...edge,
+      id: `diff_removed_${index}_${edge.id}`,
+      diffStatus: 'removed' as const,
+    }))
+
+  return {
+    ...current,
+    nodes: [...current.nodes, ...deletedNodes],
+    edges: [...currentEdges, ...removedEdges],
+  }
+}
+
 export function toSelectableGraph(graph: OnnxGraph): SelectableGraph {
   return { ...graph, nodes: graph.nodes.map((n) => ({ ...n, selected: false })) }
 }

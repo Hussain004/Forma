@@ -16,6 +16,7 @@ export interface OnnxNode {
   dimmed?: boolean
   excluded?: boolean
   isModified?: boolean
+  diffStatus?: 'deleted'
   // Set only for a node the user manually placed on the canvas (addCustomNode).
   // GraphCanvas's dagre layout treats a node with this set as fixed -- it's
   // excluded from auto-layout entirely rather than repositioned every render.
@@ -28,6 +29,7 @@ export interface OnnxEdge {
   target: string
   label?: string
   shape?: OnnxDim[]
+  diffStatus?: 'changed' | 'removed'
 }
 
 export interface OnnxGraph {
