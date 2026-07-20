@@ -1,4 +1,4 @@
-import type { OnnxGraph, OnnxNode } from './onnxTypes'
+import type { OnnxDim, OnnxGraph, OnnxNode, TensorMetadata } from './onnxTypes'
 
 export interface SelectableNode extends OnnxNode {
   selected: boolean
@@ -479,10 +479,58 @@ export interface RewireValidation {
   reason?: string
 }
 
-// Only original and custom-added nodes are valid rewire endpoints -- same scope
-// boundary as delete/insertPassthrough (see isStructuralEditTarget above). No
-// shape/dtype checking: that needs per-op-type shape inference and is out of
-// scope for v1.4/v1.5.
+const ONNX_ELEM_TYPE_NAMES: Record<number, string> = {
+  1: 'FLOAT', 2: 'UINT8', 3: 'INT8', 4: 'UINT16', 5: 'INT16',
+  6: 'INT32', 7: 'INT64', 8: 'STRING', 9: 'BOOL', 10: 'FLOAT16',
+  11: 'DOUBLE', 12: 'UINT32', 13: 'UINT64', 14: 'COMPLEX64',
+  15: 'COMPLEX128', 16: 'BFLOAT16', 17: 'FLOAT8E4M3FN',
+  18: 'FLOAT8E4M3FNUZ', 19: 'FLOAT8E5M2', 20: 'FLOAT8E5M2FNUZ',
+  21: 'UINT4', 22: 'INT4', 23: 'FLOAT4E2M1', 24: 'FLOAT8E8M0',
+}
+
+function elemTypeLabel(elemType: number): string {
+  return ONNX_ELEM_TYPE_NAMES[elemType] ?? 'TYPE_' + elemType
+}
+
+function concreteDimension(dim: OnnxDim): number | null {
+  return 'value' in dim ? dim.value : null
+}
+
+export function validateTensorCompatibility(
+  source: TensorMetadata | undefined,
+  target: TensorMetadata | undefined,
+): RewireValidation {
+  if (source?.elemType && target?.elemType && source.elemType !== target.elemType) {
+    return {
+      valid: false,
+      reason: 'Tensor type mismatch: source ' + elemTypeLabel(source.elemType) + ', target expects ' + elemTypeLabel(target.elemType),
+    }
+  }
+
+  if (!source?.shape || !target?.shape) return { valid: true }
+  if (source.shape.length !== target.shape.length) {
+    return {
+      valid: false,
+      reason: 'Shape rank mismatch: source rank ' + source.shape.length + ', target expects rank ' + target.shape.length,
+    }
+  }
+
+  for (let index = 0; index < source.shape.length; index += 1) {
+    const sourceValue = concreteDimension(source.shape[index])
+    const targetValue = concreteDimension(target.shape[index])
+    if (sourceValue !== null && targetValue !== null && sourceValue !== targetValue) {
+      return {
+        valid: false,
+        reason: 'Shape mismatch at dimension ' + (index + 1) + ': source ' + sourceValue + ', target expects ' + targetValue,
+      }
+    }
+  }
+
+  return { valid: true }
+}
+
+// Original and custom-added nodes are valid rewire endpoints. Known target
+// tensor contracts are preserved, while incomplete metadata remains permissive.
 export function validateRewire(
   graph: Pick<OnnxGraph, 'nodes' | 'edges'>,
   sourceNodeId: string,
@@ -498,12 +546,18 @@ export function validateRewire(
   const source = graph.nodes.find((n) => n.id === sourceNodeId)
   const target = graph.nodes.find((n) => n.id === targetNodeId)
   if (!source || !target) return { valid: false, reason: 'Node not found' }
-  const sourceTensor = source.outputs.find((o) => o !== '')
+  const sourceOutputPosition = source.outputs.findIndex((output) => output !== '')
+  const sourceTensor = source.outputs[sourceOutputPosition]
   if (!sourceTensor) return { valid: false, reason: 'Source has no output' }
   if (!target.inputs[inputPosition]) return { valid: false, reason: 'Invalid input position' }
   if (getDescendants(graph, targetNodeId).has(sourceNodeId)) {
     return { valid: false, reason: 'Would create a cycle' }
   }
+  const compatibility = validateTensorCompatibility(
+    source.outputMetadata?.[sourceOutputPosition],
+    target.inputMetadata?.[inputPosition],
+  )
+  if (!compatibility.valid) return compatibility
   return { valid: true }
 }
 
@@ -520,7 +574,8 @@ export function rewireEdge(
   const source = graph.nodes.find((n) => n.id === sourceNodeId)
   const target = graph.nodes.find((n) => n.id === targetNodeId)
   if (!source || !target) return graph
-  const newTensorName = source.outputs.find((o) => o !== '')
+  const sourceOutputPosition = source.outputs.findIndex((output) => output !== '')
+  const newTensorName = source.outputs[sourceOutputPosition]
   const oldTensorName = target.inputs[inputPosition]
   if (!newTensorName || !oldTensorName || newTensorName === oldTensorName) return graph
 
@@ -530,6 +585,7 @@ export function rewireEdge(
     source: sourceNodeId,
     target: targetNodeId,
     label: newTensorName,
+    shape: source.outputMetadata?.[sourceOutputPosition]?.shape,
   }
 
   return {

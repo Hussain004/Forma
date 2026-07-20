@@ -1,4 +1,4 @@
-import type { OnnxNode, OnnxEdge, OnnxGraph } from './onnxTypes'
+import type { OnnxNode, OnnxEdge, OnnxGraph, TensorMetadata } from './onnxTypes'
 import { parseOnnxProto, type ParsedGraph } from './onnxProtoParser'
 
 // Turns a format-neutral ParsedGraph IR into the app's OnnxGraph shape (node/edge
@@ -23,8 +23,28 @@ export function buildGraphFromParsed(proto: ParsedGraph, modelName: string, form
 
   // Build a map of tensor name -> shape from graph inputs, outputs, and intermediate value_info
   const tensorShapes = new Map<string, import('./onnxProtoParser').OnnxDim[]>()
+  const tensorMetadata = new Map<string, TensorMetadata>()
   for (const vi of [...proto.inputs, ...proto.outputs, ...proto.valueInfo]) {
     if (vi.name && vi.shape) tensorShapes.set(vi.name, vi.shape)
+    if (vi.name) {
+      const current = tensorMetadata.get(vi.name) ?? {}
+      tensorMetadata.set(vi.name, {
+        shape: vi.shape ?? current.shape,
+        elemType: vi.elemType && vi.elemType > 0 ? vi.elemType : current.elemType,
+      })
+    }
+  }
+
+  for (const init of proto.initializers) {
+    tensorMetadata.set(init.name, {
+      shape: init.dims.map((value) => ({ value })),
+      elemType: init.elemType > 0 ? init.elemType : undefined,
+    })
+  }
+
+  const metadataForNames = (names: string[]): TensorMetadata[] | undefined => {
+    const metadata = names.map((name) => tensorMetadata.get(name) ?? {})
+    return metadata.some((item) => item.shape !== undefined || item.elemType !== undefined) ? metadata : undefined
   }
 
   // Graph input nodes (non-initializer inputs only)
@@ -42,6 +62,7 @@ export function buildGraphFromParsed(proto: ParsedGraph, modelName: string, form
       paramCount: 0,
       estimatedSizeMB: 0,
       outputShapes: vi.shape ? [vi.shape] : undefined,
+      outputMetadata: metadataForNames([vi.name]),
     })
     tensorProducer.set(vi.name, id)
   })
@@ -77,6 +98,8 @@ export function buildGraphFromParsed(proto: ParsedGraph, modelName: string, form
       estimatedSizeMB,
       inputShapes: inputShapes.length > 0 ? inputShapes : undefined,
       outputShapes: outputShapes.length > 0 ? outputShapes : undefined,
+      inputMetadata: metadataForNames(rawNode.inputs),
+      outputMetadata: metadataForNames(rawNode.outputs),
     })
 
     // Wire edges from tensor producers to this node (skip initializers as visual sources)
@@ -107,6 +130,7 @@ export function buildGraphFromParsed(proto: ParsedGraph, modelName: string, form
       paramCount: 0,
       estimatedSizeMB: 0,
       inputShapes: vi.shape ? [vi.shape] : undefined,
+      inputMetadata: metadataForNames([vi.name]),
     })
     if (sourceId) {
       edges.push({ id: `${sourceId}->${id}@${vi.name}`, source: sourceId, target: id, label: vi.name, shape: tensorShapes.get(vi.name) })
