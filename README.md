@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-1.7.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-1.8.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -49,7 +49,7 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Click any node to open the Layer Inspector with operator type, node name, parameter count, estimated weight size, tensor shape annotations, and full attribute listing (kernel size, strides, epsilon, group, auto_pad, and every other op attribute stored in the model)
 - Inline attribute editing: click any attribute value to edit it directly; integer, float, string, and array attributes are all editable with type-aware parsing
 - Structural editing: delete a node with automatic reconnection, or a picker to choose the reconnection source when it has multiple inputs; insert a passthrough Identity node by clicking any edge. A green "NEW" badge marks inserted nodes in the canvas
-- Manual rewiring: drag a connection from any node's output to a specific input handle on another node to redirect that input; each input on a multi-input node (Add, Concat, etc.) gets its own handle so the drop target is never ambiguous. Self-connections and connections that would create a cycle are rejected automatically
+- Manual rewiring: drag a connection from any node's output to a specific input handle on another node to redirect that input; each input on a multi-input node (Add, Concat, etc.) gets its own handle so the drop target is never ambiguous. Forma rejects self-connections, cycles, and known tensor type, rank, or concrete-dimension conflicts while allowing symbolic or missing metadata
 - Add custom node: place a new, initially unconnected node on the canvas from a curated op list or free-text entry, then wire its inputs and output into the graph with the same drag-to-connect gesture as manual rewiring. A green "NEW" badge marks it, same as an inserted passthrough
 - Edit history: a tabbed timeline records attribute, structural, rewire, and add-node edits; jump to any point, undo, redo, or revert to the original model
 - Diff view: toggle an original-versus-current overlay with ghosted deleted nodes, existing MOD and NEW badges, blue changed connections, dashed removed connections, and a copyable plain-text change log
@@ -92,7 +92,7 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Both parsers build the same graph representation through a shared generic layer, so the graph canvas and inspector need no format-specific code
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
-- 281 tests across 19 files; zero TypeScript errors on strict mode
+- 291 tests across 20 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -202,7 +202,7 @@ src/
   hooks/
     useOnnxWorker.ts      Typed React hook wrapping the ONNX Web Worker
   lib/
-    onnxTypes.ts          OnnxNode, OnnxEdge, OnnxGraph (format: 'onnx' | 'tflite') interfaces
+    onnxTypes.ts          Graph interfaces plus aligned per-input and per-output tensor metadata
     onnxProtoParser.ts    Binary protobuf parser for ONNX ModelProto
     onnxProtoWriter.ts    Byte-preserving protobuf writer: attribute edits, node delete/insert
     tfliteParser.ts       Binary FlatBuffers parser for TFLite (read-only): FlatBufferReader,
@@ -212,7 +212,8 @@ src/
     attrUtils.ts          inferAttrType, parseAttrEdit -- attribute type inference and parsing
     graphUtils.ts         Pure graph transforms: selection, filter, exclusion, tracing, depth,
                           delete eligibility, delete-with-reconnect, passthrough insertion,
-                          rewire validation (cycle/self-connect) and edge rewiring, addCustomNode
+                          rewire validation (cycle, self-connect, tensor compatibility), edge
+                          rewiring, addCustomNode
                           and the curated op-type menu, structuralNodeIndex (unifies original and
                           custom-added node addressing), OP_CATEGORIES (ONNX + TFLite op names),
                           and buildGraphDiff for the original-versus-current overlay
@@ -242,6 +243,7 @@ src/
                           Add Node picker UI (curated pick and free text)
     v1.6.test.ts          History labels and panel state, undo/redo, jumps, reset, and redo truncation
     v1.7.test.ts          Graph diff metadata, ghost rendering, change-log copy, and overlay state
+    v1.8.test.ts          Tensor metadata alignment, rewire compatibility, and rejection feedback
 ```
 
 ---
@@ -250,7 +252,7 @@ src/
 
 ```bash
 npm run dev      # Dev server with COOP/COEP headers
-npm test         # 281 tests across 19 files
+npm test         # 291 tests across 20 files
 npx tsc --noEmit # Type-check without building
 npm run build    # Production build
 ```
@@ -261,6 +263,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 1.8.0 | Rewire tensor compatibility validation for known types, ranks, and concrete dimensions |
 | 1.7.0 | Original-versus-current graph diff overlay and copyable plain-text change log |
 | 1.6.0 | Unified edit history with undo, redo, jump-to-any-point timeline, and revert-to-original controls |
 | 1.5.0 | Add custom node: curated op list or free text, wired into the graph via drag-to-connect, writer support for inserting an arbitrary node with correct topological placement |

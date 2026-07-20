@@ -2,6 +2,11 @@ import type { OnnxDim, ParsedValueInfo, ModelMetadata } from './onnxProtoParser'
 
 export type { OnnxDim, ParsedValueInfo, ModelMetadata }
 
+export interface TensorMetadata {
+  shape?: OnnxDim[]
+  elemType?: number
+}
+
 export interface OnnxNode {
   id: string
   name?: string
@@ -13,6 +18,8 @@ export interface OnnxNode {
   estimatedSizeMB: number
   inputShapes?: OnnxDim[][]
   outputShapes?: OnnxDim[][]
+  inputMetadata?: TensorMetadata[]
+  outputMetadata?: TensorMetadata[]
   dimmed?: boolean
   excluded?: boolean
   isModified?: boolean
