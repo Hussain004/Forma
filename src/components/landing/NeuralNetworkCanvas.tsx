@@ -1,66 +1,95 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 
-const NODE_COUNT = 52
-const PROXIMITY_RADIUS = 3.0
-const DRIFT_SPEED = 0.08
-const PROXIMITY_PULSE_SPEED = 4.0
+const LAYER_COUNTS = [4, 7, 9, 9, 7, 4]
+const NODE_COUNT = LAYER_COUNTS.reduce((total, count) => total + count, 0)
+const PROXIMITY_RADIUS = 2.6
 
-// Seed-based pseudo-random for deterministic layout
+interface NetworkTopology {
+  positions: Float32Array
+  edges: Array<[number, number]>
+}
+
 function seededRandom(seed: number) {
-  let s = seed
+  let state = seed
   return () => {
-    s = (s * 16807 + 0) % 2147483647
-    return (s - 1) / 2147483646
+    state = (state * 16807) % 2147483647
+    return (state - 1) / 2147483646
   }
 }
 
-// Generate edges connecting nearby nodes in the initial layout
-function generateEdges(positions: Float32Array, nodeCount: number): [number, number][] {
-  const edges: [number, number][] = []
-  const maxEdges = nodeCount * 2
-  const rand = seededRandom(42)
-  for (let i = 0; i < nodeCount && edges.length < maxEdges; i++) {
-    const ix = positions[i * 3]
-    const iy = positions[i * 3 + 1]
-    const iz = positions[i * 3 + 2]
-    let closest = -1
-    let closestDist = Infinity
-    for (let j = 0; j < nodeCount; j++) {
-      if (j === i) continue
-      const alreadyConnected = edges.some(
-        (e) => (e[0] === i && e[1] === j) || (e[0] === j && e[1] === i),
-      )
-      if (alreadyConnected) continue
-      const dx = positions[j * 3] - ix
-      const dy = positions[j * 3 + 1] - iy
-      const dz = positions[j * 3 + 2] - iz
-      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
-      if (dist < closestDist) {
-        closestDist = dist
-        closest = j
-      }
+function createTopology(): NetworkTopology {
+  const random = seededRandom(1701)
+  const positions = new Float32Array(NODE_COUNT * 3)
+  const layerStarts: number[] = []
+  let nodeIndex = 0
+
+  LAYER_COUNTS.forEach((count, layerIndex) => {
+    layerStarts.push(nodeIndex)
+    const x = -11 + layerIndex * (22 / (LAYER_COUNTS.length - 1))
+    for (let index = 0; index < count; index += 1) {
+      const normalizedY = count === 1 ? 0 : index / (count - 1)
+      positions[nodeIndex * 3] = x + (random() - 0.5) * 0.45
+      positions[nodeIndex * 3 + 1] = 5.4 - normalizedY * 10.8 + (random() - 0.5) * 0.42
+      positions[nodeIndex * 3 + 2] = (random() - 0.5) * 2.4
+      nodeIndex += 1
     }
-    if (closest >= 0 && rand() < 0.6) {
-      edges.push([i, closest])
+  })
+
+  const edgeKeys = new Set<string>()
+  const edges: Array<[number, number]> = []
+  const addEdge = (source: number, target: number) => {
+    const key = `${source}:${target}`
+    if (edgeKeys.has(key)) return
+    edgeKeys.add(key)
+    edges.push([source, target])
+  }
+
+  for (let layer = 0; layer < LAYER_COUNTS.length - 1; layer += 1) {
+    const sourceStart = layerStarts[layer]
+    const targetStart = layerStarts[layer + 1]
+    const sourceCount = LAYER_COUNTS[layer]
+    const targetCount = LAYER_COUNTS[layer + 1]
+
+    for (let sourceOffset = 0; sourceOffset < sourceCount; sourceOffset += 1) {
+      const source = sourceStart + sourceOffset
+      const sourceY = positions[source * 3 + 1]
+      const targets = Array.from({ length: targetCount }, (_, offset) => targetStart + offset)
+        .sort((a, b) => Math.abs(positions[a * 3 + 1] - sourceY) - Math.abs(positions[b * 3 + 1] - sourceY))
+      addEdge(source, targets[0])
+      if ((sourceOffset + layer) % 2 === 0 && targets[1] !== undefined) addEdge(source, targets[1])
+    }
+
+    for (let targetOffset = 0; targetOffset < targetCount; targetOffset += 1) {
+      const target = targetStart + targetOffset
+      const hasInput = edges.some(([, edgeTarget]) => edgeTarget === target)
+      if (hasInput) continue
+      let nearestSource = sourceStart
+      for (let offset = 1; offset < sourceCount; offset += 1) {
+        const candidate = sourceStart + offset
+        const nearestDistance = Math.abs(positions[nearestSource * 3 + 1] - positions[target * 3 + 1])
+        const candidateDistance = Math.abs(positions[candidate * 3 + 1] - positions[target * 3 + 1])
+        if (candidateDistance < nearestDistance) nearestSource = candidate
+      }
+      addEdge(nearestSource, target)
     }
   }
-  return edges
+
+  return { positions, edges }
 }
 
 export function NeuralNetworkCanvas() {
   const containerRef = useRef<HTMLDivElement>(null)
-  const mouseRef = useRef({ x: 9999, y: 9999 })
-  const frameRef = useRef<number>(0)
+  const frameRef = useRef(0)
 
   useEffect(() => {
     const container = containerRef.current
+    if (typeof window.WebGLRenderingContext === 'undefined') return
     if (!container) return
 
     const scene = new THREE.Scene()
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100)
+    const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 80)
     camera.position.set(0, 0, 18)
-    camera.lookAt(0, 0, 0)
 
     let renderer: THREE.WebGLRenderer
     try {
@@ -72,189 +101,164 @@ export function NeuralNetworkCanvas() {
     } catch {
       return
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setClearColor(0x000000, 0)
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
+    renderer.setClearColor(0x12161a, 0)
+    renderer.outputColorSpace = THREE.SRGBColorSpace
     container.appendChild(renderer.domElement)
 
-    // Generate node positions
-    const rand = seededRandom(123)
-    const positions = new Float32Array(NODE_COUNT * 3)
-    const basePositions = new Float32Array(NODE_COUNT * 3)
-    const phases = new Float32Array(NODE_COUNT * 3)
-    for (let i = 0; i < NODE_COUNT; i++) {
-      const x = (rand() - 0.5) * 22
-      const y = (rand() - 0.5) * 14
-      const z = (rand() - 0.5) * 8
-      positions[i * 3] = x
-      positions[i * 3 + 1] = y
-      positions[i * 3 + 2] = z
-      basePositions[i * 3] = x
-      basePositions[i * 3 + 1] = y
-      basePositions[i * 3 + 2] = z
-      phases[i * 3] = rand() * Math.PI * 2
-      phases[i * 3 + 1] = rand() * Math.PI * 2
-      phases[i * 3 + 2] = rand() * Math.PI * 2
-    }
+    const { positions: basePositions, edges } = createTopology()
+    const positions = basePositions.slice()
+    const proximityByNode = new Float32Array(NODE_COUNT)
+    const phases = new Float32Array(NODE_COUNT)
+    const random = seededRandom(208)
+    for (let index = 0; index < NODE_COUNT; index += 1) phases[index] = random() * Math.PI * 2
 
-    const edges = generateEdges(positions, NODE_COUNT)
+    const nodeGeometry = new THREE.BoxGeometry(0.16, 0.16, 0.16)
+    const nodeMaterial = new THREE.MeshBasicMaterial({ vertexColors: false })
+    const nodes = new THREE.InstancedMesh(nodeGeometry, nodeMaterial, NODE_COUNT)
+    nodes.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    scene.add(nodes)
 
-    // Node instanced mesh -- small octahedrons for a technical look
-    const nodeGeo = new THREE.OctahedronGeometry(0.08, 0)
-    const nodeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true })
-    const nodeMesh = new THREE.InstancedMesh(nodeGeo, nodeMat, NODE_COUNT)
-    nodeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-    scene.add(nodeMesh)
-
-    // Node glow instances (slightly larger, more transparent)
-    const glowGeo = new THREE.OctahedronGeometry(0.16, 0)
-    const glowMat = new THREE.MeshBasicMaterial({ color: 0xffb000, transparent: true, opacity: 0 })
-    const glowMesh = new THREE.InstancedMesh(glowGeo, glowMat, NODE_COUNT)
-    glowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-    scene.add(glowMesh)
-
-    // Edge lines
-    const edgePositions = new Float32Array(edges.length * 6)
-    const edgeColors = new Float32Array(edges.length * 6)
     const edgeGeometry = new THREE.BufferGeometry()
-    edgeGeometry.setAttribute('position', new THREE.BufferAttribute(edgePositions, 3))
-    edgeGeometry.setAttribute('color', new THREE.BufferAttribute(edgeColors, 3))
-    const edgeMaterial = new THREE.LineBasicMaterial({
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.4,
-    })
+    edgeGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(edges.length * 6), 3))
+    edgeGeometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(edges.length * 6), 3))
+    const edgeMaterial = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5 })
     const edgeLines = new THREE.LineSegments(edgeGeometry, edgeMaterial)
     scene.add(edgeLines)
 
-    // Dummy for instance matrix updates
+    const pointer = new THREE.Vector2(10, 10)
+    const pointerWorld = new THREE.Vector3(100, 100, 0)
     const dummy = new THREE.Object3D()
-    const tmpColor = new THREE.Color()
+    const idleNodeColor = new THREE.Color(0x5d6770)
+    const greenNodeColor = new THREE.Color(0x4a5d23)
+    const activeNodeColor = new THREE.Color(0xffb000)
+    const idleEdgeColor = new THREE.Color(0x283138)
+    const activeEdgeColor = new THREE.Color(0xffb000)
+    const workingColor = new THREE.Color()
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 
-    // Mouse tracking
-    const onMouseMove = (e: MouseEvent) => {
-      mouseRef.current.x = (e.clientX / window.innerWidth) * 2 - 1
-      mouseRef.current.y = -(e.clientY / window.innerHeight) * 2 + 1
+    const updatePointerWorld = () => {
+      const projected = new THREE.Vector3(pointer.x, pointer.y, 0.5).unproject(camera)
+      const direction = projected.sub(camera.position).normalize()
+      const distance = -camera.position.z / direction.z
+      pointerWorld.copy(camera.position).add(direction.multiplyScalar(distance))
     }
-    window.addEventListener('mousemove', onMouseMove)
 
-    // Resize
+    const onPointerMove = (event: PointerEvent) => {
+      const rect = container.getBoundingClientRect()
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+      updatePointerWorld()
+    }
+
+    const onPointerLeave = () => {
+      pointer.set(10, 10)
+      pointerWorld.set(100, 100, 0)
+    }
+
+    window.addEventListener('pointermove', onPointerMove)
+    document.documentElement.addEventListener('pointerleave', onPointerLeave)
+
     const onResize = () => {
-      const w = container.clientWidth
-      const h = container.clientHeight
-      camera.aspect = w / h
+      const width = Math.max(1, container.clientWidth)
+      const height = Math.max(1, container.clientHeight)
+      camera.aspect = width / height
       camera.updateProjectionMatrix()
-      renderer.setSize(w, h)
+      renderer.setSize(width, height, false)
+      updatePointerWorld()
     }
     onResize()
     const resizeObserver = new ResizeObserver(onResize)
     resizeObserver.observe(container)
 
-    // Animation loop
-    const clock = new THREE.Clock()
-    const animate = () => {
-      const elapsed = clock.getElapsedTime()
-      frameRef.current = requestAnimationFrame(animate)
+    const renderFrame = (timestamp: number) => {
+      const elapsed = timestamp / 1000
+      const driftAmount = reducedMotion ? 0 : 0.11
 
-      // Project mouse to 3D plane at z=0
-      const mouse3D = new THREE.Vector3(mouseRef.current.x * 14, mouseRef.current.y * 8, 0)
+      camera.position.x += ((pointer.x < 2 ? pointer.x * 0.26 : 0) - camera.position.x) * 0.018
+      camera.position.y += ((pointer.y < 2 ? pointer.y * 0.18 : 0) - camera.position.y) * 0.018
+      camera.lookAt(0, 0, 0)
+      updatePointerWorld()
 
-      // Update node positions (drift)
-      for (let i = 0; i < NODE_COUNT; i++) {
-        const i3 = i * 3
-        positions[i3] = basePositions[i3] + Math.sin(elapsed * DRIFT_SPEED + phases[i3]) * 0.4
-        positions[i3 + 1] = basePositions[i3 + 1] + Math.cos(elapsed * DRIFT_SPEED * 0.7 + phases[i3 + 1]) * 0.3
-        positions[i3 + 2] = basePositions[i3 + 2] + Math.sin(elapsed * DRIFT_SPEED * 0.5 + phases[i3 + 2]) * 0.2
+      for (let index = 0; index < NODE_COUNT; index += 1) {
+        const offset = index * 3
+        let x = basePositions[offset]
+        let y = basePositions[offset + 1] + Math.sin(elapsed * 0.22 + phases[index]) * driftAmount
+        const z = basePositions[offset + 2]
+        const dx = x - pointerWorld.x
+        const dy = y - pointerWorld.y
+        const distance = Math.hypot(dx, dy)
+        const proximity = Math.max(0, 1 - distance / PROXIMITY_RADIUS)
+        proximityByNode[index] = proximity
 
-        // Distance to mouse
-        const dx = positions[i3] - mouse3D.x
-        const dy = positions[i3 + 1] - mouse3D.y
-        const dist = Math.sqrt(dx * dx + dy * dy)
-        const proximity = Math.max(0, 1 - dist / PROXIMITY_RADIUS)
-
-        // Node transform
-        dummy.position.set(positions[i3], positions[i3 + 1], positions[i3 + 2])
-        const scale = 1 + proximity * 1.5
-        dummy.scale.setScalar(scale)
-        dummy.updateMatrix()
-        nodeMesh.setMatrixAt(i, dummy.matrix)
-
-        // Node color: idle dim white, proximity amber
-        const brightness = 0.15 + proximity * 0.85
-        tmpColor.setRGB(brightness, brightness, brightness)
-        if (proximity > 0.1) {
-          tmpColor.lerp(new THREE.Color(0xffb000), proximity * 0.7)
+        if (proximity > 0 && distance > 0.001) {
+          x += (dx / distance) * proximity * 0.18
+          y += (dy / distance) * proximity * 0.18
         }
-        nodeMesh.setColorAt(i, tmpColor)
+        positions[offset] = x
+        positions[offset + 1] = y
+        positions[offset + 2] = z
 
-        // Glow
-        dummy.scale.setScalar(1 + proximity * 3)
+        dummy.position.set(x, y, z)
+        const scale = 1 + proximity * 1.8
+        dummy.scale.set(1.5 * scale, scale, scale)
+        dummy.rotation.z = Math.sin(phases[index]) * 0.35
         dummy.updateMatrix()
-        glowMesh.setMatrixAt(i, dummy.matrix)
-        glowMat.opacity = 0.15
-        glowMesh.setColorAt(i, new THREE.Color(0xffb000))
+        nodes.setMatrixAt(index, dummy.matrix)
+
+        workingColor.copy(index % 7 === 0 ? greenNodeColor : idleNodeColor)
+        workingColor.lerp(activeNodeColor, proximity)
+        nodes.setColorAt(index, workingColor)
       }
+      nodes.instanceMatrix.needsUpdate = true
+      if (nodes.instanceColor) nodes.instanceColor.needsUpdate = true
 
-      nodeMesh.instanceMatrix.needsUpdate = true
-      nodeMesh.instanceColor!.needsUpdate = true
-      glowMesh.instanceMatrix.needsUpdate = true
+      const positionAttribute = edgeGeometry.getAttribute('position') as THREE.BufferAttribute
+      const colorAttribute = edgeGeometry.getAttribute('color') as THREE.BufferAttribute
+      for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex += 1) {
+        const [source, target] = edges[edgeIndex]
+        const sourceOffset = source * 3
+        const targetOffset = target * 3
+        const attributeOffset = edgeIndex * 6
+        positionAttribute.array[attributeOffset] = positions[sourceOffset]
+        positionAttribute.array[attributeOffset + 1] = positions[sourceOffset + 1]
+        positionAttribute.array[attributeOffset + 2] = positions[sourceOffset + 2]
+        positionAttribute.array[attributeOffset + 3] = positions[targetOffset]
+        positionAttribute.array[attributeOffset + 4] = positions[targetOffset + 1]
+        positionAttribute.array[attributeOffset + 5] = positions[targetOffset + 2]
 
-      // Update edge positions and colors
-      const posAttr = edgeGeometry.getAttribute('position') as THREE.BufferAttribute
-      const colAttr = edgeGeometry.getAttribute('color') as THREE.BufferAttribute
-      for (let e = 0; e < edges.length; e++) {
-        const [a, b] = edges[e]
-        const a3 = a * 3
-        const b3 = b * 3
-        posAttr.array[e * 6] = positions[a3]
-        posAttr.array[e * 6 + 1] = positions[a3 + 1]
-        posAttr.array[e * 6 + 2] = positions[a3 + 2]
-        posAttr.array[e * 6 + 3] = positions[b3]
-        posAttr.array[e * 6 + 4] = positions[b3 + 1]
-        posAttr.array[e * 6 + 5] = positions[b3 + 2]
-
-        // Edge brightness based on proximity of either endpoint
-        const dax = positions[a3] - mouse3D.x
-        const day = positions[a3 + 1] - mouse3D.y
-        const proxA = Math.max(0, 1 - Math.sqrt(dax * dax + day * day) / PROXIMITY_RADIUS)
-        const dbx = positions[b3] - mouse3D.x
-        const dby = positions[b3 + 1] - mouse3D.y
-        const proxB = Math.max(0, 1 - Math.sqrt(dbx * dbx + dby * dby) / PROXIMITY_RADIUS)
-        const edgeProximity = Math.max(proxA, proxB)
-
-        const r = 0.08 + edgeProximity * 0.92
-        const g = 0.08 + edgeProximity * 0.42
-        const bl = 0.1 + edgeProximity * (-0.06)
-        colAttr.array[e * 6] = r
-        colAttr.array[e * 6 + 1] = g
-        colAttr.array[e * 6 + 2] = bl
-        colAttr.array[e * 6 + 3] = r
-        colAttr.array[e * 6 + 4] = g
-        colAttr.array[e * 6 + 5] = bl
+        const proximity = Math.max(proximityByNode[source], proximityByNode[target])
+        workingColor.copy(idleEdgeColor).lerp(activeEdgeColor, proximity * 0.9)
+        for (let vertex = 0; vertex < 2; vertex += 1) {
+          const colorOffset = attributeOffset + vertex * 3
+          colorAttribute.array[colorOffset] = workingColor.r
+          colorAttribute.array[colorOffset + 1] = workingColor.g
+          colorAttribute.array[colorOffset + 2] = workingColor.b
+        }
       }
-      posAttr.needsUpdate = true
-      colAttr.needsUpdate = true
-
-      // Pulse edge opacity with proximity
-      edgeMaterial.opacity = 0.12 + Math.sin(elapsed * PROXIMITY_PULSE_SPEED) * 0.03
+      positionAttribute.needsUpdate = true
+      colorAttribute.needsUpdate = true
 
       renderer.render(scene, camera)
+      frameRef.current = requestAnimationFrame(renderFrame)
     }
-    frameRef.current = requestAnimationFrame(animate)
+
+    frameRef.current = requestAnimationFrame(renderFrame)
 
     return () => {
       cancelAnimationFrame(frameRef.current)
-      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('pointermove', onPointerMove)
+      document.documentElement.removeEventListener('pointerleave', onPointerLeave)
       resizeObserver.disconnect()
-      renderer.dispose()
-      nodeGeo.dispose()
-      nodeMat.dispose()
-      glowGeo.dispose()
-      glowMat.dispose()
+      nodeGeometry.dispose()
+      nodeMaterial.dispose()
       edgeGeometry.dispose()
       edgeMaterial.dispose()
-      container.removeChild(renderer.domElement)
+      renderer.dispose()
+      renderer.domElement.remove()
     }
   }, [])
 
-  return <div ref={containerRef} className="landing-canvas" />
+  return <div ref={containerRef} className="landing-canvas" aria-hidden="true" />
 }

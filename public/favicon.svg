@@ -1,28 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" fill="#12161A"/>
-
-  <!-- Slab 1 (bottom): amber -->
-  <polygon points="60,46 32,56 32,62 60,52" fill="#B07000"/>
-  <polygon points="4,46 32,56 32,62 4,52" fill="#FFB000"/>
-  <polygon points="4,46 32,56 60,46 32,36" fill="#FFD060"/>
-
-  <!-- Slab 2: deep red -->
-  <polygon points="60,40 32,50 32,56 60,46" fill="#9E301A"/>
-  <polygon points="4,40 32,50 32,56 4,46" fill="#DD4A2C"/>
-  <polygon points="4,40 32,50 60,40 32,30" fill="#EA8E7B"/>
-
-  <!-- Slab 3: violet -->
-  <polygon points="60,34 32,44 32,50 60,40" fill="#671A9E"/>
-  <polygon points="4,34 32,44 32,50 4,40" fill="#932CDD"/>
-  <polygon points="4,34 32,44 60,34 32,24" fill="#BC7BEA"/>
-
-  <!-- Slab 4: blue -->
-  <polygon points="60,28 32,38 32,44 60,34" fill="#1A5C9E"/>
-  <polygon points="4,28 32,38 32,44 4,34" fill="#2C85DD"/>
-  <polygon points="4,28 32,38 60,28 32,18" fill="#7BB2EA"/>
-
-  <!-- Slab 5 (top): green -->
-  <polygon points="60,22 32,32 32,38 60,28" fill="#1A9E48"/>
-  <polygon points="4,22 32,32 32,38 4,28" fill="#2CDD6A"/>
-  <polygon points="4,22 32,32 60,22 32,12" fill="#7BEAA2"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Forma cube mark">
+  <rect x="1" y="1" width="62" height="62" rx="2" fill="#FFB000" stroke="#12161A" stroke-width="2"/>
+  <path d="M32 17 47 25 32 33 17 25 32 17Z" fill="#2A3035"/>
+  <path d="M17 25 32 33 32 48 17 40V25Z" fill="#1C2128"/>
+  <path d="M47 25 32 33 32 48 47 40V25Z" fill="#12161A"/>
+  <path d="M32 33 17 25M32 33 47 25M32 33V48" fill="none" stroke="#FFB000" stroke-width="1" opacity="0.42"/>
 </svg>
