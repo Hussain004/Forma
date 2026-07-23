@@ -16,9 +16,9 @@ export function LandingPage({ onModelLoaded, status, error, progressLabel, progr
   return (
     <div className="landing-root">
       <NeuralNetworkCanvas />
-      <div className="landing-vignette" />
-      <div className="landing-scanlines" />
-      <div className="landing-content">
+      <div className="landing-grid-frame" aria-hidden="true" />
+      <StatusBar />
+      <main className="landing-content">
         <HeroSection />
         <DropZone
           onModelLoaded={onModelLoaded}
@@ -28,8 +28,7 @@ export function LandingPage({ onModelLoaded, status, error, progressLabel, progr
           progressPercent={progressPercent}
         />
         <FeatureGrid />
-      </div>
-      <StatusBar />
+      </main>
     </div>
   )
 }
