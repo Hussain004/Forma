@@ -13,6 +13,13 @@ import { formatQuantizeEstimate } from './lib/quantize'
 import type { OnnxNode } from './lib/onnxTypes'
 import type { QuantizeEstimate } from './hooks/useOnnxWorker'
 import type { StructuralOp } from './lib/onnxProtoWriter'
+import {
+  createShareHash,
+  hashModelBuffer,
+  parseShareHash,
+  restoreSharedHistory,
+  type ShareLinkPayload,
+} from './lib/shareLinks'
 import './index.css'
 
 type GraphEdit = StructuralHistoryEntry
@@ -20,6 +27,23 @@ type GraphEdit = StructuralHistoryEntry
 interface EditHistory {
   entries: HistoryEntry[]
   index: number
+}
+
+interface InitialShareState {
+  payload: ShareLinkPayload | null
+  error: string | null
+}
+
+function getInitialShareState(): InitialShareState {
+  if (typeof window === 'undefined') return { payload: null, error: null }
+  try {
+    return { payload: parseShareHash(window.location.hash), error: null }
+  } catch (error) {
+    return {
+      payload: null,
+      error: error instanceof Error ? error.message : 'The shared edit link is invalid',
+    }
+  }
 }
 
 function formatNumber(n: number): string {
@@ -203,6 +227,8 @@ interface StatsBarProps {
   canDownload: boolean
   onDownloadModified: () => void
   canDownloadModified: boolean
+  onShare: () => void
+  canShare: boolean
   onRevert: () => void
   canRevert: boolean
   onReset: () => void
@@ -214,7 +240,7 @@ interface StatsBarProps {
   canDiff: boolean
 }
 
-function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, isBenchmarking, onDownload, canDownload, onDownloadModified, canDownloadModified, onRevert, canRevert, onReset, isReadOnly, onAddNode, editCount, onDiffToggle, diffActive, canDiff }: StatsBarProps) {
+function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEstimate, filterQuery, onFilterChange, filterInputRef, onFilterKeyDown, onFilterFocus, onFilterBlur, dropdownResults, showDropdown, dropdownIndex, onDropdownSelect, layoutDir, onLayoutToggle, onBenchmark, benchmarkLabel, isBenchmarking, onDownload, canDownload, onDownloadModified, canDownloadModified, onShare, canShare, onRevert, canRevert, onReset, isReadOnly, onAddNode, editCount, onDiffToggle, diffActive, canDiff }: StatsBarProps) {
   const quantizeLabel = formatQuantizeEstimate(quantizeEstimate)
   const [showAddNode, setShowAddNode] = useState(false)
   const [addNodeQuery, setAddNodeQuery] = useState('')
@@ -464,6 +490,11 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
             panel) this group collapses into a single overflow menu -- Export
             Modified above stays put either way, it's the primary action. */}
         <div className="statsbar-full-actions" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {canShare && (
+            <button onClick={onShare} title="Copy a verified link to the active edit sequence" className="btn-bar btn-ghost">
+              Share Edits
+            </button>
+          )}
           {!isReadOnly && benchmarkLabel && (
             <span style={{ color: 'var(--color-green)' }}>{benchmarkLabel}</span>
           )}
@@ -509,6 +540,15 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
             }}>
               {!isReadOnly && benchmarkLabel && (
                 <span style={{ color: 'var(--color-green)', fontSize: 10, padding: '4px 8px' }}>{benchmarkLabel}</span>
+              )}
+              {canShare && (
+                <button
+                  onClick={() => { onShare(); setShowOverflowMenu(false) }}
+                  className="btn-ghost"
+                  style={{ textAlign: 'left', padding: '6px 8px' }}
+                >
+                  Share Edits
+                </button>
               )}
               {!isReadOnly && (
                 <button
@@ -567,6 +607,11 @@ function App() {
   const [activePanel, setActivePanel] = useState<'inspector' | 'history' | 'changes'>('inspector')
   const [pendingNodeType, setPendingNodeType] = useState<{ opType: string; inputCount: number } | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [initialShare] = useState(getInitialShareState)
+  const [pendingShare, setPendingShare] = useState<ShareLinkPayload | null>(initialShare.payload)
+  const [shareError, setShareError] = useState<string | null>(initialShare.error)
+  const [shareVerifying, setShareVerifying] = useState(false)
+  const [modelHash, setModelHash] = useState<string | null>(null)
   // Indices into ONBOARDING_HINTS still visible. Populated on the first model
   // load ever (localStorage-gated); once every chip is dismissed the flag
   // persists and they never appear again -- the compromise between "the
@@ -588,6 +633,7 @@ function App() {
   isReadOnlyRef.current = isReadOnly
   const passthroughCounterRef = useRef(0)
   const customNodeCounterRef = useRef(0)
+  const verifiedShareRef = useRef<ShareLinkPayload | null>(null)
   const pendingNodeTypeRef = useRef(pendingNodeType)
   pendingNodeTypeRef.current = pendingNodeType
   const showShortcutsRef = useRef(showShortcuts)
@@ -622,12 +668,35 @@ function App() {
     setExcludedNodeIds(new Set())
     setSelectedNodeIds(new Set())
     setSelectedNodeId(null)
-    setHistory(() => ({ entries: [], index: 0 }))
     setShowDiff(false)
     setActivePanel('inspector')
     passthroughCounterRef.current = 0
     customNodeCounterRef.current = 0
     setPendingNodeType(null)
+
+    const shared = graph ? verifiedShareRef.current : null
+    if (graph && shared) {
+      try {
+        const restored = restoreSharedHistory(shared, graph)
+        setHistory({ entries: restored.entries, index: restored.entries.length })
+        passthroughCounterRef.current = restored.passthroughCounter
+        customNodeCounterRef.current = restored.customNodeCounter
+        setActivePanel('history')
+        setPendingShare(null)
+        setShareError(null)
+        const suffix = restored.entries.length === 1 ? '' : 's'
+        setAnnouncement({ text: 'Verified and replayed ' + restored.entries.length + ' shared edit' + suffix, tone: 'info' })
+      } catch (restoreError) {
+        setHistory({ entries: [], index: 0 })
+        setShareError(restoreError instanceof Error ? restoreError.message : 'The shared edits could not be replayed')
+        setAnnouncement({ text: 'Shared edits could not be replayed', tone: 'reject' })
+      } finally {
+        verifiedShareRef.current = null
+      }
+    } else {
+      setHistory({ entries: [], index: 0 })
+    }
+
     if (graph) {
       setShowDropzone(false)
       try {
@@ -942,9 +1011,27 @@ function App() {
     setTimeout(() => setShowDropdown(false), 150)
   }
 
-  const handleModelLoaded = (buffer: ArrayBuffer, filename: string) => {
-    setSelectableGraph(null)
-    loadModel(buffer, filename)
+  const handleModelLoaded = async (buffer: ArrayBuffer, filename: string) => {
+    setShareVerifying(true)
+    setShareError(null)
+    try {
+      const contentHash = await hashModelBuffer(buffer)
+      if (pendingShare && contentHash !== pendingShare.modelHash) {
+        setShareError('Model fingerprint mismatch. Load the exact original model used for this link.')
+        return
+      }
+      if (!pendingShare && window.location.hash.startsWith('#s=')) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search)
+      }
+      setModelHash(contentHash)
+      verifiedShareRef.current = pendingShare
+      setSelectableGraph(null)
+      loadModel(buffer, filename)
+    } catch (hashError) {
+      setShareError(hashError instanceof Error ? hashError.message : 'The model could not be verified')
+    } finally {
+      setShareVerifying(false)
+    }
   }
 
   const applySelection = (ids: Set<string>, primary: string | null) => {
@@ -1101,6 +1188,13 @@ function App() {
   const handleReset = () => {
     setShowDropzone(true)
     setSelectableGraph(null)
+    setPendingShare(null)
+    setShareError(null)
+    setModelHash(null)
+    verifiedShareRef.current = null
+    if (window.location.hash.startsWith('#s=')) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    }
   }
 
   const handleRevertEdits = () => {
@@ -1169,6 +1263,21 @@ function App() {
     })
   }
 
+  const handleShare = async () => {
+    if (!modelHash || !graph || activeHistory.length === 0) return
+    try {
+      const shareHash = createShareHash(modelHash, graph.modelName, activeHistory)
+      const url = new URL(window.location.href)
+      url.hash = shareHash
+      window.history.replaceState(null, '', url.toString())
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable')
+      await navigator.clipboard.writeText(url.toString())
+      announce('Verified edit link copied. The recipient must load the matching original model.')
+    } catch (shareFailure) {
+      announce(shareFailure instanceof Error ? shareFailure.message : 'The edit link could not be created', 'reject')
+    }
+  }
+
   const benchmarkLabel = benchmarkResult
     ? `avg ${benchmarkResult.avgMs.toFixed(1)} ms / median ${benchmarkResult.medianMs.toFixed(1)} ms / min ${benchmarkResult.minMs.toFixed(1)} ms / max ${benchmarkResult.maxMs.toFixed(1)} ms (${benchmarkResult.runs} runs, batch 1, zeroed inputs)`
     : status === 'benchmarking' ? 'Running warmup + benchmark...' : null
@@ -1229,10 +1338,15 @@ function App() {
         <div style={{ position: 'absolute', inset: 0, zIndex: 10 }}>
           <LandingPage
             onModelLoaded={handleModelLoaded}
-            status={dropzoneStatus}
-            error={error}
+            status={shareError ? 'error' : dropzoneStatus}
+            error={shareError ?? error}
             progressLabel={progress?.stage ?? null}
             progressPercent={progress?.percent ?? null}
+            shareRequest={pendingShare ? {
+              modelName: pendingShare.modelName,
+              fingerprint: pendingShare.modelHash.slice(0, 12),
+              verifying: shareVerifying,
+            } : null}
           />
         </div>
       )}
@@ -1263,6 +1377,8 @@ function App() {
             canDownload={status === 'ready'}
             onDownloadModified={handleDownloadModified}
             canDownloadModified={status === 'ready' && !isReadOnly && history.index > 0}
+            onShare={handleShare}
+            canShare={status === 'ready' && !isReadOnly && history.index > 0 && modelHash !== null}
             onRevert={handleRevertEdits}
             canRevert={history.index > 0}
             onReset={handleReset}

@@ -1,6 +1,6 @@
 import { NeuralNetworkCanvas } from './NeuralNetworkCanvas'
 import { HeroSection } from './HeroSection'
-import { DropZone } from './DropZone'
+import { DropZone, type SharedModelRequest } from './DropZone'
 import { FeatureGrid } from './FeatureGrid'
 import { StatusBar } from './StatusBar'
 
@@ -10,9 +10,10 @@ interface LandingPageProps {
   error?: string | null
   progressLabel?: string | null
   progressPercent?: number | null
+  shareRequest?: SharedModelRequest | null
 }
 
-export function LandingPage({ onModelLoaded, status, error, progressLabel, progressPercent }: LandingPageProps) {
+export function LandingPage({ onModelLoaded, status, error, progressLabel, progressPercent, shareRequest }: LandingPageProps) {
   return (
     <div className="landing-root">
       <NeuralNetworkCanvas />
@@ -26,6 +27,7 @@ export function LandingPage({ onModelLoaded, status, error, progressLabel, progr
           error={error}
           progressLabel={progressLabel}
           progressPercent={progressPercent}
+          shareRequest={shareRequest}
         />
         <FeatureGrid />
       </main>
