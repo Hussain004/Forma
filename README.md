@@ -30,6 +30,22 @@ ONNX edit sequences can be shared through verified URL hashes without uploading 
   <img src="public/forma-v2-demo.gif" width="960" alt="Forma loading a model, adding a node, sharing the edit sequence, and replaying it after model verification" />
 </div>
 
+## Screenshots
+
+### Editor Workspace
+
+The bundled sample model loaded locally with the Conv node selected and its editable attributes,
+tensor shapes, parameter count, and graph context visible.
+
+![Forma editor with a sample ONNX model and Conv inspector](public/forma-editor.png)
+
+### Verified Share Link
+
+A shared edit sequence requests the exact original model and displays its expected SHA-256
+fingerprint before any edits are replayed.
+
+![Forma shared edit link requesting the verified original model](public/forma-share-verification.png)
+
 ---
 
 ## Capabilities
@@ -136,21 +152,6 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ---
 
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Framework | React 19 + TypeScript (strict) + Vite 8 |
-| Graph rendering | @xyflow/react (React Flow v12) |
-| Layout | dagre |
-| ONNX execution | onnxruntime-web (WASM) in a Web Worker |
-| Protobuf parsing | Schema-aware binary decoder (no generated code) |
-| Design system | CSS custom properties, 4px grid, JetBrains Mono |
-| Testing | Vitest + @testing-library/react |
-| Deployment | Vercel (static SPA with COOP/COEP headers) |
-
----
-
 ## Architecture
 
 ```
@@ -185,26 +186,6 @@ Browser (main thread)
 **No backend:** The entire pipeline runs in the browser. Zero infrastructure, zero server latency, models never leave the user's machine.
 
 **COOP/COEP headers:** `SharedArrayBuffer` requires a cross-origin isolated context. Both `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` are set via `vercel.json` on every response.
-
----
-
-## Design System
-
-Avionics Blueprint visual language: the aesthetic of a high-density engineering terminal.
-
-| Token | Value | Usage |
-|---|---|---|
-| Background | `#12161A` | Application base |
-| Surface | `#16191C` | Panels, node cards |
-| Raised | `#1C2128` | Input/output tensor nodes |
-| Amber | `#FFB000` | Active flows, selections, borders |
-| Green | `#52C57A` | Success and confirmation states |
-| Error | `#C0392B` | Parse failures, load errors |
-| Font | JetBrains Mono | All text at all sizes |
-| Base unit | 4px | All spacing is a multiple of 4 |
-| Border radius | 2px maximum | No rounded cards |
-
-No box-shadows. No gradients. No Inter or Roboto.
 
 ---
 
