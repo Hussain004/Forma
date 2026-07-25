@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-1.8.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-2.0.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -24,6 +24,11 @@
 Forma is a fully client-side web application for loading, visualizing, and analyzing ONNX and TFLite neural network models. Drop a `.onnx` or `.tflite` file onto the canvas and the complete computation graph renders immediately: nodes laid out automatically with dagre, every tensor edge routed, each operator inspectable with a single click. ONNX models are fully editable and exportable; TFLite support is read-only.
 
 All computation runs in the browser via WebAssembly. Models never leave the user's machine.
+ONNX edit sequences can be shared through verified URL hashes without uploading model bytes.
+
+<div align="center">
+  <img src="public/forma-v2-demo.gif" width="960" alt="Forma loading a model, adding a node, sharing the edit sequence, and replaying it after model verification" />
+</div>
 
 ---
 
@@ -65,6 +70,16 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Inference benchmark: forward pass in the WASM runtime with median latency across multiple trials
 - Node exclusion: mark individual nodes as excluded; visual strikethrough applied to excluded cards
 
+### Shareable Edit Links
+
+- Share Edits copies the active ONNX edit sequence into a compact URL hash
+- Model bytes and weights are never embedded in the link or uploaded anywhere
+- Every link includes a SHA-256 fingerprint of the original model
+- Opening a link prompts the recipient to load the original file from their own device
+- Edits replay only after the browser verifies an exact fingerprint match
+- Attribute edits, deletes, grouped bulk deletes, passthrough insertion, rewires, custom nodes, and canvas placement all round-trip through the link
+- Replayed edits populate the normal history timeline and remain undoable, redoable, diffable, and exportable
+
 ### TFLite Support (Read-Only)
 
 - Format detected by the file's own identifier bytes, not just its extension, so drag-and-drop works correctly regardless of how the file is named
@@ -92,7 +107,8 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 - Both parsers build the same graph representation through a shared generic layer, so the graph canvas and inspector need no format-specific code
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
-- 291 tests across 20 files; zero TypeScript errors on strict mode
+- Compact, versioned share-link codec with strict URL validation and browser-native SHA-256 verification
+- 299 tests across 21 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -103,6 +119,7 @@ All computation runs in the browser via WebAssembly. Models never leave the user
 1. Open [**forma-ml.vercel.app**](https://forma-ml.vercel.app)
 2. Drag any `.onnx` model file onto the canvas
 3. Click any node to inspect it in the Layer Inspector panel
+4. Make an edit and choose Share Edits to copy a verified edit link
 
 ### Run Locally
 
@@ -148,6 +165,8 @@ Browser (main thread)
 |     +-- LayerInspector    Per-node detail, multi-select aggregate, model summary histogram
 |     |
 |     +-- ModelDropzone     Drag-and-drop with progress bar
+|     |
+|     +-- shareLinks.ts     Compact edit codec, SHA-256 verification, safe history replay
 |
 |                           postMessage (ArrayBuffer transfer, zero-copy)
 |
@@ -217,6 +236,8 @@ src/
                           and the curated op-type menu, structuralNodeIndex (unifies original and
                           custom-added node addressing), OP_CATEGORIES (ONNX + TFLite op names),
                           and buildGraphDiff for the original-versus-current overlay
+    shareLinks.ts         Compact URL-hash codec, model fingerprinting, input validation,
+                          and verified history reconstruction
     quantize.ts           INT8 size estimation and formatting
   workers/
     onnxWorker.ts         Web Worker: LOAD_MODEL (format-sniffed), BENCHMARK, EXPORT, EXPORT_MODIFIED
@@ -244,6 +265,7 @@ src/
     v1.6.test.ts          History labels and panel state, undo/redo, jumps, reset, and redo truncation
     v1.7.test.ts          Graph diff metadata, ghost rendering, change-log copy, and overlay state
     v1.8.test.ts          Tensor metadata alignment, rewire compatibility, and rejection feedback
+    v2.0.test.tsx         Share codec, hashing, validation, verification, replay, and clipboard flow
 ```
 
 ---
@@ -252,7 +274,7 @@ src/
 
 ```bash
 npm run dev      # Dev server with COOP/COEP headers
-npm test         # 291 tests across 20 files
+npm test         # 299 tests across 21 files
 npx tsc --noEmit # Type-check without building
 npm run build    # Production build
 ```
@@ -263,6 +285,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 2.0.0 | Shareable URL-hash edit sequences with SHA-256 original-model verification and automatic history replay |
 | 1.8.0 | Rewire tensor compatibility validation for known types, ranks, and concrete dimensions |
 | 1.7.0 | Original-versus-current graph diff overlay and copyable plain-text change log |
 | 1.6.0 | Unified edit history with undo, redo, jump-to-any-point timeline, and revert-to-original controls |
@@ -294,6 +317,7 @@ npm run build    # Production build
 - **TFLite per-op attributes are not shown.** Decoding them requires walking ~100 distinct per-operator-type FlatBuffers schemas (Conv2DOptions, Pool2DOptions, etc.), which is out of scope for the initial read-only viewer. Topology, tensor shapes, and weight sizes are all shown; op-specific parameters (e.g. Conv2D stride) are not yet.
 - **Graph internals depend on runtime exposure.** `onnxruntime-web` does not expose a public API for reading graph node metadata. Forma uses a schema-aware binary parser as the primary path with a runtime-extraction fallback.
 - **INT8 estimates are projections.** The quantization size figures are computed analytically from parameter counts, not from running a quantizer. They are labeled as estimates.
+- **Share links do not contain the model.** A recipient must have the exact original ONNX file. Forma verifies its SHA-256 fingerprint before replaying any edits.
 
 ---
 

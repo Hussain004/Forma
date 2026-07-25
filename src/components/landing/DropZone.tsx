@@ -2,12 +2,19 @@ import { useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { NerdGlyph } from './NerdGlyph'
 
+export interface SharedModelRequest {
+  modelName?: string
+  fingerprint: string
+  verifying: boolean
+}
+
 interface DropZoneProps {
   onModelLoaded: (buffer: ArrayBuffer, filename: string) => void
   status: 'idle' | 'loading' | 'ready' | 'error'
   error?: string | null
   progressLabel?: string | null
   progressPercent?: number | null
+  shareRequest?: SharedModelRequest | null
 }
 
 function friendlyErrorHeadline(raw: string | null | undefined): string {
@@ -18,7 +25,7 @@ function friendlyErrorHeadline(raw: string | null | undefined): string {
   return 'Something went wrong while loading this model.'
 }
 
-export function DropZone({ onModelLoaded, status, error, progressLabel, progressPercent }: DropZoneProps) {
+export function DropZone({ onModelLoaded, status, error, progressLabel, progressPercent, shareRequest }: DropZoneProps) {
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -58,7 +65,7 @@ export function DropZone({ onModelLoaded, status, error, progressLabel, progress
       .then((buffer) => onModelLoaded(buffer, 'sample-model.onnx'))
   }
 
-  const isBusy = status === 'loading'
+  const isBusy = status === 'loading' || shareRequest?.verifying === true
   const openPicker = () => {
     if (!isBusy) inputRef.current?.click()
   }
@@ -79,7 +86,7 @@ export function DropZone({ onModelLoaded, status, error, progressLabel, progress
       />
 
       <AnimatePresence>
-        {status === 'loading' && (
+        {isBusy && (
           <motion.section
             key="loading"
             className="landing-dropzone landing-dropzone-state"
@@ -90,16 +97,16 @@ export function DropZone({ onModelLoaded, status, error, progressLabel, progress
             transition={{ duration: 0.2 }}
           >
             <div className="landing-dropzone-meta">
-              <span>DECODING GRAPH</span>
-              <span>{Math.round(progressPercent ?? 0).toString().padStart(3, '0')}%</span>
+              <span>{shareRequest ? 'VERIFYING ORIGINAL MODEL' : 'DECODING GRAPH'}</span>
+              <span>{shareRequest ? 'SHA-256' : Math.round(progressPercent ?? 0).toString().padStart(3, '0') + '%'}</span>
             </div>
             <div className="landing-loading">
               <NerdGlyph glyph="fileCode" className="landing-dropzone-icon" />
-              <span className="landing-dropzone-label">{progressLabel ?? 'Parsing model'}</span>
+              <span className="landing-dropzone-label">{shareRequest ? 'Verifying model fingerprint' : progressLabel ?? 'Parsing model'}</span>
               <div className="landing-loading-bar" aria-hidden="true">
                 <motion.div
                   className="landing-loading-fill"
-                  animate={{ width: `${progressPercent ?? 0}%` }}
+                  animate={{ width: shareRequest ? '100%' : String(progressPercent ?? 0) + '%' }}
                   transition={{ duration: 0.3, ease: 'easeOut' }}
                 />
               </div>
@@ -107,7 +114,7 @@ export function DropZone({ onModelLoaded, status, error, progressLabel, progress
           </motion.section>
         )}
 
-        {status === 'error' && (
+        {status === 'error' && !isBusy && (
           <motion.section
             key="error"
             className="landing-dropzone landing-dropzone-state landing-dropzone-error"
@@ -138,7 +145,7 @@ export function DropZone({ onModelLoaded, status, error, progressLabel, progress
           </motion.section>
         )}
 
-        {status !== 'loading' && status !== 'error' && (
+        {!isBusy && status !== 'error' && (
           <motion.section
             key="idle"
             className={`landing-dropzone${dragging ? ' dragging' : ''}`}
@@ -170,21 +177,27 @@ export function DropZone({ onModelLoaded, status, error, progressLabel, progress
             transition={{ duration: 0.2 }}
           >
             <div className="landing-dropzone-meta">
-              <span>MODEL INGRESS / LOCAL FILE</span>
-              <span>.ONNX .TFLITE</span>
+              <span>{shareRequest ? 'SHARED EDIT SEQUENCE / ORIGINAL FILE' : 'MODEL INGRESS / LOCAL FILE'}</span>
+              <span>{shareRequest ? 'VERIFY REQUIRED' : '.ONNX .TFLITE'}</span>
             </div>
 
             <div className="landing-dropzone-target">
               <NerdGlyph glyph="upload" className="landing-dropzone-icon" />
-              <span className="landing-dropzone-label">Drop .onnx or .tflite model</span>
-              <span className="landing-dropzone-sublabel">or click to select from this device</span>
+              <span className="landing-dropzone-label">
+                {shareRequest ? 'Load ' + (shareRequest.modelName ?? 'the original ONNX model') : 'Drop .onnx or .tflite model'}
+              </span>
+              <span className="landing-dropzone-sublabel">
+                {shareRequest ? 'Expected SHA-256 ' + shareRequest.fingerprint + '...' : 'or click to select from this device'}
+              </span>
             </div>
 
             <div className="landing-dropzone-actions">
               <span><NerdGlyph glyph="lock" /> Bytes stay in this browser</span>
-              <button onClick={handleLoadSample} className="landing-text-action">
-                Load sample model <NerdGlyph glyph="arrowRight" />
-              </button>
+              {!shareRequest && (
+                <button onClick={handleLoadSample} className="landing-text-action">
+                  Load sample model <NerdGlyph glyph="arrowRight" />
+                </button>
+              )}
             </div>
           </motion.section>
         )}
