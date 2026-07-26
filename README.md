@@ -26,13 +26,7 @@ Forma is a fully client-side web application for loading, visualizing, and analy
 All computation runs in the browser via WebAssembly. Models never leave the user's machine.
 ONNX edit sequences can be shared through verified URL hashes without uploading model bytes.
 
-<div align="center">
-  <a href="https://github.com/Hussain004/Forma/releases/download/v2.0.0/forma-v2-demo.mp4">
-    <img src="public/forma-v2-demo.png" width="960" alt="Forma loading a model, adding a node, sharing the edit sequence, and replaying it after model verification" />
-  </a>
-  <br />
-  <a href="https://github.com/Hussain004/Forma/releases/download/v2.0.0/forma-v2-demo.mp4">Watch the full-quality v2.0 workflow demo</a>
-</div>
+<video src="https://github.com/user-attachments/assets/0d1304a3-9be0-495a-b6f5-7a2f6e422bb6" controls width="100%"></video>
 
 ## Screenshots
 
