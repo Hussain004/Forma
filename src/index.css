@@ -206,12 +206,10 @@ button.attr-value-button:focus-visible {
   }
 }
 
-/* ---- StatsBar responsive collapse ----
-   A container query (not a window-width media query) so this responds to the
-   bar's own rendered width, which isn't the same as the viewport -- the
-   resizable inspector panel eats into it. At 1024px viewport width the bar
-   used to crop the model name off the left edge and Export Modified/Load new
-   off the right, with no wrap or scroll: verified live in the original audit. */
+/* StatsBar responsive collapse.
+   The complete action row needs more than a normal desktop viewport once edit
+   actions appear. Keep secondary actions in the overflow menu until the bar
+   has enough room to render the complete row without clipping. */
 .stats-bar {
   container-type: inline-size;
   container-name: statsbar;
@@ -230,7 +228,7 @@ button.attr-value-button:focus-visible {
     display: inline;
   }
 }
-@container statsbar (max-width: 1100px) {
+@container statsbar (max-width: 2800px) {
   .statsbar-full-actions {
     display: none !important;
   }
