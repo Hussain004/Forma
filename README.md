@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-2.0.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-2.1.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -94,6 +94,16 @@ fingerprint before any edits are replayed.
 - Attribute edits, deletes, grouped bulk deletes, passthrough insertion, rewires, custom nodes, and canvas placement all round-trip through the link
 - Replayed edits populate the normal history timeline and remain undoable, redoable, diffable, and exportable
 
+### Behavioral Validation
+
+- Run the original model and the current edits against identical inputs, side by side, entirely in ONNX Runtime Web in your browser
+- Load reusable test inputs from a `.npy` file (single-input models) or a `.npz` archive (array names matched against graph input names); both the plain and DEFLATE-compressed `.npz` variants that `numpy.savez` produces are supported, decoded with the browser's native `DecompressionStream`
+- No file loaded falls back to deterministic generated inputs -- reproducible across runs, but a smoke test, not real data, and labeled as such
+- Per-output comparison: presence, shape match, max absolute error, max relative error, cosine similarity, and Top-K index agreement where the output shape makes that applicable
+- A failed load or inference on either side is reported with the underlying onnxruntime error message, not just a pass/fail flag
+- Results are recorded per edit state (by its actual sequence of applied edits, not by index), so switching between undo/redo/history-jump points recalls prior results instead of losing them
+- Unavailable for read-only TFLite models, consistent with every other edit-related feature
+
 ### TFLite Support (Read-Only)
 
 - Format detected by the file's own identifier bytes, not just its extension, so drag-and-drop works correctly regardless of how the file is named
@@ -122,7 +132,8 @@ fingerprint before any edits are replayed.
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
 - Compact, versioned share-link codec with strict URL validation and browser-native SHA-256 verification
-- 299 tests across 21 files; zero TypeScript errors on strict mode
+- Hand-written `.npy`/`.npz` reader (no zip library dependency): a minimal central-directory ZIP walk plus the browser's native `DecompressionStream` for DEFLATE entries
+- 318 tests across 22 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -177,6 +188,7 @@ Browser (main thread)
       BENCHMARK         -> BENCHMARK_RESULT (ONNX only, no TFLite runtime exists)
       EXPORT            -> EXPORT_RESULT (ArrayBuffer transfer)
       EXPORT_MODIFIED   -> EXPORT_RESULT (attribute and structural edits patched into the original buffer, ONNX only)
+      VALIDATE          -> VALIDATION_RESULT (two throwaway sessions -- original bytes and patched bytes -- run against identical inputs; comparison math runs back on the main thread)
 ```
 
 **Web Worker isolation:** WASM model loading and inference are blocking operations. Isolating them in a worker keeps the UI at 60 fps regardless of model size. The `useOnnxWorker` hook exposes a clean async interface with typed status transitions.
@@ -264,6 +276,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 2.1.0 | Behavioral validation: run the original and edited model against identical `.npy`/`.npz` or generated inputs and compare outputs |
 | 2.0.0 | Shareable URL-hash edit sequences with SHA-256 original-model verification and automatic history replay |
 | 1.8.0 | Rewire tensor compatibility validation for known types, ranks, and concrete dimensions |
 | 1.7.0 | Original-versus-current graph diff overlay and copyable plain-text change log |

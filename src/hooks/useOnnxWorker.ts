@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { OnnxGraph } from '../lib/onnxTypes'
 import type { StructuralOp } from '../lib/onnxProtoWriter'
+import type { ProvidedValidationInput } from '../workers/onnxWorker'
+import type { ValidationRunResult } from '../lib/validationUtils'
 
 type Status = 'idle' | 'loading' | 'ready' | 'running' | 'benchmarking' | 'exporting' | 'error'
 
@@ -25,6 +27,7 @@ type WorkerResponse =
   | { type: 'QUANTIZE_ESTIMATE'; payload: QuantizeEstimate }
   | { type: 'EXPORT_RESULT'; payload: ArrayBuffer }
   | { type: 'VERIFY_RESULT'; payload: { valid: boolean; message?: string } }
+  | { type: 'VALIDATION_RESULT'; payload: ValidationRunResult }
   | { type: 'ERROR'; payload: string; scope: 'load' | 'operation' }
   | { type: 'PROGRESS'; payload: { stage: string; percent: number } }
 
@@ -54,6 +57,8 @@ export function useOnnxWorker() {
   const benchmarkRejecterRef = useRef<((err: Error) => void) | null>(null)
   const exportResolve = useRef<((buf: ArrayBuffer) => void) | null>(null)
   const exportReject = useRef<((err: Error) => void) | null>(null)
+  const validationResolve = useRef<((r: ValidationRunResult) => void) | null>(null)
+  const validationReject = useRef<((err: Error) => void) | null>(null)
 
   useEffect(() => {
     const worker = new Worker(new URL('../workers/onnxWorker.ts', import.meta.url), { type: 'module' })
@@ -77,6 +82,10 @@ export function useOnnxWorker() {
         setStatus('ready')
       } else if (msg.type === 'VERIFY_RESULT') {
         setVerifyResult({ ...msg.payload, at: Date.now() })
+      } else if (msg.type === 'VALIDATION_RESULT') {
+        validationResolve.current?.(msg.payload)
+        validationResolve.current = null
+        validationReject.current = null
       } else if (msg.type === 'INFERENCE_RESULT') {
         inferenceResolverRef.current?.(msg.payload.outputs)
         inferenceResolverRef.current = null
@@ -93,6 +102,11 @@ export function useOnnxWorker() {
           exportReject.current(new Error(msg.payload))
           exportResolve.current = null
           exportReject.current = null
+        }
+        if (validationReject.current) {
+          validationReject.current(new Error(msg.payload))
+          validationResolve.current = null
+          validationReject.current = null
         }
         if (msg.scope === 'load') {
           setError(msg.payload)
@@ -171,5 +185,18 @@ export function useOnnxWorker() {
     })
   }, [])
 
-  return { loadModel, runInference, runBenchmark, exportModel, exportModifiedModel, graph, status, error, operationError, verifyResult, progress, benchmarkResult, quantizeEstimate }
+  const runValidation = useCallback((
+    overrides: Map<number, Record<string, string | number>>,
+    structuralOps: StructuralOp[],
+    providedInputs: Record<string, ProvidedValidationInput> | null,
+  ): Promise<ValidationRunResult> => {
+    return new Promise((resolve, reject) => {
+      if (!workerRef.current) { reject(new Error('No worker')); return }
+      validationResolve.current = resolve
+      validationReject.current = reject
+      workerRef.current.postMessage({ type: 'VALIDATE', payload: { overrides, structuralOps, providedInputs } })
+    })
+  }, [])
+
+  return { loadModel, runInference, runBenchmark, exportModel, exportModifiedModel, runValidation, graph, status, error, operationError, verifyResult, progress, benchmarkResult, quantizeEstimate }
 }
