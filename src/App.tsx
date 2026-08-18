@@ -6,7 +6,11 @@ import { GraphCanvas } from './components/GraphCanvas'
 import { LayerInspector } from './components/LayerInspector'
 import { HistoryPanel } from './components/HistoryPanel'
 import { ChangeLogPanel } from './components/ChangeLogPanel'
+import { ValidationPanel } from './components/ValidationPanel'
 import { useOnnxWorker } from './hooks/useOnnxWorker'
+import { isNpyBuffer, isNpzBuffer, parseNpy, parseNpz, type ParsedArray } from './lib/npyParser'
+import type { ValidationRunResult } from './lib/validationUtils'
+import type { ProvidedValidationInput } from './workers/onnxWorker'
 import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, validateRewire, rewireEdge, addCustomNode, structuralNodeIndex, buildGraphDiff, CURATED_NODE_TYPES, type SelectableGraph } from './lib/graphUtils'
 import type { HistoryEntry, StructuralHistoryEntry } from './lib/graphUtils'
 import { formatQuantizeEstimate } from './lib/quantize'
@@ -585,7 +589,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
 }
 
 function App() {
-  const { loadModel, runBenchmark, exportModel, exportModifiedModel, graph, status, error, operationError, verifyResult, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
+  const { loadModel, runBenchmark, exportModel, exportModifiedModel, runValidation, graph, status, error, operationError, verifyResult, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
   // TFLite support is read-only: no inference session ever exists for it (no TFLite
   // runtime in this project), so attribute/structural editing, Benchmark, and Export
   // Modified are all withheld for it -- see tfliteParser.ts and onnxWorker.ts.
@@ -604,7 +608,11 @@ function App() {
   const [jumpToNodeId, setJumpToNodeId] = useState<string | null>(null)
   const [history, setHistory] = useState<EditHistory>({ entries: [], index: 0 })
   const [showDiff, setShowDiff] = useState(false)
-  const [activePanel, setActivePanel] = useState<'inspector' | 'history' | 'changes'>('inspector')
+  const [activePanel, setActivePanel] = useState<'inspector' | 'history' | 'changes' | 'validation'>('inspector')
+  const [validationCache, setValidationCache] = useState<Map<string, ValidationRunResult>>(new Map())
+  const [providedInputs, setProvidedInputs] = useState<Record<string, ParsedArray> | null>(null)
+  const [validationFileError, setValidationFileError] = useState<string | null>(null)
+  const [isValidating, setIsValidating] = useState(false)
   const [pendingNodeType, setPendingNodeType] = useState<{ opType: string; inputCount: number } | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [initialShare] = useState(getInitialShareState)
@@ -670,6 +678,9 @@ function App() {
     setSelectedNodeId(null)
     setShowDiff(false)
     setActivePanel('inspector')
+    setValidationCache(new Map())
+    setProvidedInputs(null)
+    setValidationFileError(null)
     passthroughCounterRef.current = 0
     customNodeCounterRef.current = 0
     setPendingNodeType(null)
@@ -856,6 +867,25 @@ function App() {
   }, [])
 
   const activeHistory = useMemo(() => history.entries.slice(0, history.index), [history])
+
+  // Identifies an edit state by its actual sequence of applied entries, not by
+  // index -- after an undo followed by a new edit, index 2 can refer to a
+  // different edit than it did before, but its signature never collides.
+  const historySignature = useMemo(() => JSON.stringify(activeHistory), [activeHistory])
+
+  // Every history index that currently has a cached validation run, so the
+  // panel can show which edit states have already been checked without
+  // re-running them -- the "record validity against history states" part of
+  // behavioral validation.
+  const validatedStates = useMemo(() => {
+    const states: { index: number; ok: boolean }[] = []
+    for (let i = 0; i <= history.entries.length; i++) {
+      const signature = JSON.stringify(history.entries.slice(0, i))
+      const cached = validationCache.get(signature)
+      if (cached) states.push({ index: i, ok: cached.original.inferenceOk && cached.modified.inferenceOk })
+    }
+    return states
+  }, [history.entries, validationCache])
 
   const attrOverrides = useMemo(() => {
     const overrides = new Map<string, Record<string, string | number>>()
@@ -1234,7 +1264,10 @@ function App() {
     })
   }
 
-  const handleDownloadModified = () => {
+  // Shared by Export Modified and Run Validation -- both need the active
+  // history translated from live node ids into the writer's index-addressed
+  // StructuralOp shape.
+  const toExportPayload = () => {
     const overridesByIndex = new Map<number, Record<string, string | number>>()
     for (const [nodeId, overrides] of attrOverrides) {
       const nodeIndex = structuralNodeIndex(nodeId)
@@ -1250,6 +1283,11 @@ function App() {
             ? { type: 'rewire', targetNodeIndex: op.targetNodeIndex, inputPosition: op.inputPosition, sourceNodeIndex: op.sourceNodeIndex }
             : { type: 'addNode', newNodeIndex: op.newNodeIndex, opType: op.opType, inputCount: op.inputCount },
     )
+    return { overridesByIndex, writerOps }
+  }
+
+  const handleDownloadModified = () => {
+    const { overridesByIndex, writerOps } = toExportPayload()
     announce('Exporting... verification result will follow')
     exportModifiedModel(overridesByIndex, writerOps).then((buf) => {
       const blob = new Blob([buf], { type: 'application/octet-stream' })
@@ -1261,6 +1299,59 @@ function App() {
       a.click()
       URL.revokeObjectURL(url)
     })
+  }
+
+  const handleRunValidation = () => {
+    const { overridesByIndex, writerOps } = toExportPayload()
+    let payload: Record<string, ProvidedValidationInput> | null = null
+    if (providedInputs) {
+      payload = {}
+      for (const [name, array] of Object.entries(providedInputs)) payload[name] = array
+    }
+    setIsValidating(true)
+    const signature = historySignature
+    runValidation(overridesByIndex, writerOps, payload)
+      .then((result) => {
+        setValidationCache((prev) => new Map(prev).set(signature, result))
+      })
+      .catch((validationErr) => {
+        announce(validationErr instanceof Error ? validationErr.message : 'Validation failed', 'reject')
+      })
+      .finally(() => setIsValidating(false))
+  }
+
+  // A single .npy has no name of its own; it only makes sense to map it onto
+  // the model's one graph input. An .npz's entry names are matched directly
+  // against graph input names -- anything that doesn't match is dropped, and
+  // the file is rejected only if nothing in it matched at all.
+  const handleValidationFile = async (file: File) => {
+    setValidationFileError(null)
+    try {
+      const buffer = await file.arrayBuffer()
+      const bytes = new Uint8Array(buffer)
+      let parsed: Record<string, ParsedArray>
+      if (isNpzBuffer(bytes)) {
+        parsed = await parseNpz(buffer)
+      } else if (isNpyBuffer(bytes)) {
+        const inputNames = (graph?.graphInputs ?? []).map((vi) => vi.name).filter((n): n is string => !!n)
+        if (inputNames.length !== 1) {
+          throw new Error('A single .npy file only works when the model has exactly one input; use .npz with names matching each input')
+        }
+        parsed = { [inputNames[0]]: parseNpy(buffer) }
+      } else {
+        throw new Error('Not a recognized .npy or .npz file')
+      }
+
+      const inputNames = new Set((graph?.graphInputs ?? []).map((vi) => vi.name))
+      const matched = Object.fromEntries(Object.entries(parsed).filter(([name]) => inputNames.has(name)))
+      if (Object.keys(matched).length === 0) {
+        throw new Error(`No array names matched a graph input (${[...inputNames].join(', ')})`)
+      }
+      setProvidedInputs(matched)
+      announce(`Loaded inputs: ${Object.keys(matched).join(', ')}`)
+    } catch (fileErr) {
+      setValidationFileError(fileErr instanceof Error ? fileErr.message : 'Could not read that file')
+    }
   }
 
   const handleShare = async () => {
@@ -1560,12 +1651,47 @@ function App() {
                   >
                     Changes ({history.index})
                   </button>
+                  {!isReadOnly && (
+                    <button
+                      type="button"
+                      role="tab"
+                      data-testid="validation-tab"
+                      aria-selected={activePanel === 'validation'}
+                      onClick={() => setActivePanel('validation')}
+                      className="btn-ghost"
+                      style={{
+                        flex: 1,
+                        padding: '8px 12px',
+                        borderBottom: activePanel === 'validation' ? '2px solid var(--color-amber)' : '2px solid transparent',
+                        color: activePanel === 'validation' ? 'var(--color-amber)' : 'var(--text-dim)',
+                        fontSize: 10,
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      Validate
+                    </button>
+                  )}
                 </div>
                 <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
                   {activePanel === 'history' ? (
                     <HistoryPanel entries={history.entries} index={history.index} onJump={handleHistoryJump} />
                   ) : activePanel === 'changes' ? (
                     <ChangeLogPanel entries={activeHistory} onCopy={() => announce('Change log copied')} />
+                  ) : activePanel === 'validation' && !isReadOnly ? (
+                    <ValidationPanel
+                      isReadOnly={isReadOnly}
+                      isRunning={isValidating}
+                      currentResult={validationCache.get(historySignature) ?? null}
+                      providedInputNames={providedInputs ? Object.keys(providedInputs) : null}
+                      fileError={validationFileError}
+                      onFileSelected={(file) => { void handleValidationFile(file) }}
+                      onClearProvidedInputs={() => { setProvidedInputs(null); setValidationFileError(null) }}
+                      onRun={handleRunValidation}
+                      validatedStates={validatedStates}
+                      activeIndex={history.index}
+                      onJumpToState={handleHistoryJump}
+                    />
                   ) : (
                     <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} onCopy={() => announce('Copied to clipboard')} />
                   )}
