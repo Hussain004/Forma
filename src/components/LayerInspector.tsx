@@ -1,8 +1,27 @@
 import { useState, useEffect, useRef, type CSSProperties } from 'react'
-import type { OnnxNode, ModelMetadata } from '../lib/onnxTypes'
+import type { OnnxDim, OnnxNode, ModelMetadata } from '../lib/onnxTypes'
 import { formatShape } from '../lib/onnxProtoParser'
 import { opCategoryColor, type DeleteEligibility } from '../lib/graphUtils'
 import { parseAttrEdit } from '../lib/attrUtils'
+
+// Bare comma list ("1, 3, 8, 8"), not formatShape's bracketed display form --
+// this one has to round-trip through parseShapeEdit below. A purely numeric
+// token is a concrete dim, anything else is a symbolic one (batch, N, ...).
+function formatShapeForEdit(dims?: OnnxDim[]): string {
+  return (dims ?? []).map((d) => ('value' in d ? String(d.value) : d.param)).join(', ')
+}
+
+// Empty input means unranked (shape omitted entirely), not rank-0/scalar --
+// there's no text-box syntax here for "explicitly empty shape", the same
+// simplification onnxProtoWriter.ts's encodeValueInfo documents.
+function parseShapeEdit(value: string): OnnxDim[] | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  return trimmed.split(',').map((token) => {
+    const t = token.trim()
+    return /^-?\d+$/.test(t) ? { value: Number(t) } : { param: t }
+  })
+}
 
 function PencilIcon({ color }: { color: string }) {
   const style = { transition: 'fill 140ms ease' }
@@ -33,6 +52,11 @@ interface LayerInspectorProps {
   onDeleteNode?: (nodeId: string, keepInputPosition: number | null) => void
   deleteEligibility?: DeleteEligibility
   onCopy?: () => void
+  onRenameNode?: (nodeId: string, name: string) => void
+  onRenameTensor?: (oldName: string, newName: string) => void
+  onSetGraphIO?: (nodeId: string, elemType: number, dims: OnnxDim[] | null) => void
+  onPromoteOutput?: (tensorName: string) => void
+  onReplaceConstant?: (initializerName: string, values: number[]) => void
 }
 
 const bulkButtonStyle: React.CSSProperties = {
@@ -89,16 +113,91 @@ function Row({ label, value }: { label: string; value: string }) {
   )
 }
 
+// One inline-editable field, shared by attribute values, node/tensor
+// renames, graph I/O type/shape, and constant values -- click to edit, Enter
+// or blur commits, Escape cancels. `fieldKey` distinguishes which field is
+// being edited (see LayerInspector's editingField state); only one is ever
+// open at a time.
+interface FieldEdit {
+  editingField: string | null
+  editValue: string
+  onStart: (key: string, current: string) => void
+  onChange: (value: string) => void
+  onCommit: (key: string) => void
+  onCancel: () => void
+}
+
+function EditableText({ fieldKey, value, edit, testIdPrefix, testIdSuffix, title, textStyle }: {
+  fieldKey: string
+  value: string
+  edit: FieldEdit
+  testIdPrefix: string
+  // Defaults to fieldKey; overridden where fieldKey carries a prefix (e.g.
+  // `attr:${name}`) that pre-v2.3 tests don't expect in the testid itself.
+  testIdSuffix?: string
+  title?: string
+  textStyle?: CSSProperties
+}) {
+  const testId = testIdSuffix ?? fieldKey
+  if (edit.editingField === fieldKey) {
+    return (
+      <input
+        data-testid={`${testIdPrefix}-input-${testId}`}
+        autoFocus
+        value={edit.editValue}
+        onChange={(e) => edit.onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); edit.onCommit(fieldKey) }
+          if (e.key === 'Escape') { e.stopPropagation(); edit.onCancel() }
+        }}
+        onBlur={() => edit.onCommit(fieldKey)}
+        className="input-mono"
+        style={{ flex: 1, minWidth: 0, background: 'rgba(255,176,0,0.06)', borderRadius: 1, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontSize: 12, padding: '0 4px' }}
+      />
+    )
+  }
+  return (
+    <button
+      type="button"
+      data-testid={`${testIdPrefix}-value-${testId}`}
+      className="attr-value-button"
+      title={title}
+      onClick={() => edit.onStart(fieldKey, value)}
+      onKeyDown={(e) => { if (e.key === 'Enter') edit.onStart(fieldKey, value) }}
+    >
+      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...textStyle }}>{value}</span>
+      <PencilIcon color="var(--text-dim)" />
+    </button>
+  )
+}
+
 // Tensor name + (when known) its shape, one row -- replaces what used to be
 // two separate sections ("Input shapes" and "Inputs") that both listed every
 // tensor name, once with a shape and once without. Tensor names aren't
 // semantic labels like "OP TYPE" (they're arbitrary, sometimes long
 // identifiers), so this deliberately doesn't reuse Row's uppercase labelStyle.
-function IORow({ name, shape }: { name: string; shape?: string }) {
+// fieldKey+edit make the name itself renamable; onPromote adds a button to
+// promote this tensor to a graph output (outputs of a compute node only).
+function IORow({ name, shape, fieldKey, edit, onPromote }: {
+  name: string
+  shape?: string
+  fieldKey?: string
+  edit?: FieldEdit
+  onPromote?: () => void
+}) {
   return (
-    <div style={{ ...rowStyle, gap: 8 }}>
-      <span style={{ color: 'var(--text-secondary)', fontSize: 11, wordBreak: 'break-word', flex: 1, minWidth: 0 }}>{name}</span>
+    <div style={{ ...rowStyle, gap: 8, alignItems: 'center' }}>
+      {fieldKey && edit ? (
+        <EditableText fieldKey={fieldKey} value={name} edit={edit} testIdPrefix="tensor" title="Rename this tensor" textStyle={{ fontSize: 11, color: 'var(--text-secondary)' }} />
+      ) : (
+        <span style={{ color: 'var(--text-secondary)', fontSize: 11, wordBreak: 'break-word', flex: 1, minWidth: 0 }}>{name}</span>
+      )}
       {shape && <span style={{ color: 'var(--text-dim)', fontSize: 10, whiteSpace: 'nowrap' }}>{shape}</span>}
+      {onPromote && (
+        <button type="button" data-testid={`promote-output-${name}`} onClick={onPromote} title="Promote this tensor to an additional graph output" className="btn-ghost" style={{ fontSize: 9, padding: '1px 6px', flexShrink: 0 }}>
+          &rarr; OUT
+        </button>
+      )}
     </div>
   )
 }
@@ -133,15 +232,19 @@ function sensitivityColor(params: number): string {
   return '#52C57A'
 }
 
-export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onBulkDelete, onExtractRepro, onAttrEdit, onDeleteNode, deleteEligibility, onCopy }: LayerInspectorProps) {
-  const [editingAttr, setEditingAttr] = useState<string | null>(null)
+export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onBulkDelete, onExtractRepro, onAttrEdit, onDeleteNode, deleteEligibility, onCopy, onRenameNode, onRenameTensor, onSetGraphIO, onPromoteOutput, onReplaceConstant }: LayerInspectorProps) {
+  // One editingField/editValue pair drives every inline-editable field on this
+  // panel (attributes, node name, tensor names, graph I/O type/shape, constant
+  // values) -- fieldKey (see commitEditField) says which. Only one can be open
+  // at a time, which is also the desired UX: committing or canceling one
+  // closes it before another can open.
+  const [editingField, setEditingField] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
-  const [hoveredAttr, setHoveredAttr] = useState<string | null>(null)
   const [showDeletePicker, setShowDeletePicker] = useState(false)
   const cancelEditRef = useRef(false)
 
   useEffect(() => {
-    setEditingAttr(null)
+    setEditingField(null)
     setEditValue('')
     setShowDeletePicker(false)
   }, [node?.id])
@@ -331,26 +434,64 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
     navigator.clipboard.writeText(lines.join('\n')).then(() => onCopy?.()).catch(() => {})
   }
 
-  function startEdit(attrName: string, current: string | number) {
-    setEditingAttr(attrName)
-    setEditValue(String(current))
+  function startEditField(key: string, current: string) {
+    setEditingField(key)
+    setEditValue(current)
   }
 
-  function commitEdit(attrName: string, original: string | number) {
+  function cancelEditField() {
+    cancelEditRef.current = true
+    setEditingField(null)
+  }
+
+  // Dispatches on fieldKey's prefix -- see the field's own EditableText call
+  // site for the exact key shape (e.g. `attr:${name}`, `input:${position}`).
+  function commitEditField(key: string) {
     if (cancelEditRef.current) {
       cancelEditRef.current = false
+      setEditingField(null)
       return
     }
-    const parsed = parseAttrEdit(editValue, original)
-    if (parsed !== original && node) {
-      onAttrEdit?.(node.id, attrName, parsed)
+    if (node) {
+      if (key === 'nodename') {
+        const name = editValue.trim()
+        if (name && name !== (node.name ?? '')) onRenameNode?.(node.id, name)
+      } else if (key.startsWith('attr:')) {
+        const attrName = key.slice(5)
+        const original = node.attributes[attrName] as string | number
+        const parsed = parseAttrEdit(editValue, original)
+        if (parsed !== original) onAttrEdit?.(node.id, attrName, parsed)
+      } else if (key.startsWith('input:') || key.startsWith('output:')) {
+        const [kind, positionText] = key.split(':')
+        const position = Number(positionText)
+        const oldName = kind === 'input' ? node.inputs[position] : node.outputs[position]
+        const newName = editValue.trim()
+        if (oldName && newName && newName !== oldName) onRenameTensor?.(oldName, newName)
+      } else if (key === 'iotype') {
+        const elemType = Number(editValue.trim())
+        if (Number.isInteger(elemType) && elemType > 0) {
+          const currentShape = node.opType === 'Input' ? node.outputShapes?.[0] : node.inputShapes?.[0]
+          onSetGraphIO?.(node.id, elemType, currentShape ?? null)
+        }
+      } else if (key === 'ioshape') {
+        const elemType = node.opType === 'Input' ? node.outputMetadata?.[0]?.elemType : node.inputMetadata?.[0]?.elemType
+        onSetGraphIO?.(node.id, elemType ?? 1, parseShapeEdit(editValue))
+      } else if (key.startsWith('const:')) {
+        const initializerName = key.slice(6)
+        const values = editValue.split(',').map((token) => Number(token.trim()))
+        if (values.every((v) => Number.isFinite(v))) onReplaceConstant?.(initializerName, values)
+      }
     }
-    setEditingAttr(null)
+    setEditingField(null)
   }
 
-  function cancelEdit() {
-    cancelEditRef.current = true
-    setEditingAttr(null)
+  const fieldEdit: FieldEdit = {
+    editingField,
+    editValue,
+    onStart: startEditField,
+    onChange: setEditValue,
+    onCommit: commitEditField,
+    onCancel: cancelEditField,
   }
 
   return (
@@ -388,63 +529,49 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
         </button>
       </div>
       <Row label="OP TYPE" value={node.opType} />
-      {node.name && <Row label="NODE NAME" value={node.name} />}
+      {isCompute && onRenameNode && (
+        <div style={rowStyle}>
+          <span style={labelStyle}>NODE NAME</span>
+          <EditableText fieldKey="nodename" value={node.name ?? ''} edit={fieldEdit} testIdPrefix="nodename" title="Rename this node" />
+        </div>
+      )}
+      {(!isCompute || !onRenameNode) && node.name && <Row label="NODE NAME" value={node.name} />}
 
       {Object.keys(node.attributes ?? {}).length > 0 && (
         <>
           {sectionHeader('Attributes')}
-          {Object.entries(node.attributes).map(([k, v]) => {
-            const original = v as string | number
-            const isEditing = editingAttr === k
-            const isHovered = hoveredAttr === k
-            const pencilColor = isHovered ? 'var(--color-amber)' : 'var(--text-dim)'
-            const hoverRowStyle: CSSProperties = {
-              ...rowStyle,
-              background: isHovered && !isEditing ? 'rgba(255,176,0,0.04)' : 'transparent',
-              transition: 'background 140ms ease',
-            }
+          {Object.entries(node.attributes).map(([k, v]) => (
+            <div key={k} style={rowStyle}>
+              <span style={labelStyle}>{k}</span>
+              <EditableText fieldKey={`attr:${k}`} testIdSuffix={k} value={String(v)} edit={fieldEdit} testIdPrefix="attr" title={`Edit ${k}`} textStyle={valueStyle} />
+            </div>
+          ))}
+        </>
+      )}
+
+      {node.inputs.length > 0 && (
+        <>
+          {sectionHeader('Inputs')}
+          {node.inputs.map((inp, i) => {
+            const name = inp || `input_${i}`
+            const constValues = node.inputMetadata?.[i]?.values
             return (
-              <div key={k} style={hoverRowStyle}>
-                <span style={labelStyle}>{k}</span>
-                {isEditing ? (
-                  <input
-                    data-testid={`attr-input-${k}`}
-                    autoFocus
-                    value={editValue}
-                    onChange={e => setEditValue(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') { e.preventDefault(); commitEdit(k, original) }
-                      if (e.key === 'Escape') { e.stopPropagation(); cancelEdit() }
-                    }}
-                    onBlur={() => commitEdit(k, original)}
-                    className="input-mono"
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      background: 'rgba(255,176,0,0.06)',
-                      borderRadius: 1,
-                      color: 'var(--text-primary)',
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 12,
-                      padding: '0 4px',
-                    }}
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    data-testid={`attr-value-${k}`}
-                    className="attr-value-button"
-                    title={`Edit ${k}`}
-                    onClick={() => startEdit(k, original)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') startEdit(k, original) }}
-                    onMouseEnter={() => setHoveredAttr(k)}
-                    onMouseLeave={() => setHoveredAttr(null)}
-                  >
-                    <span style={{ ...valueStyle, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {String(v)}
-                    </span>
-                    <PencilIcon color={pencilColor} />
-                  </button>
+              <div key={name + i}>
+                <IORow
+                  name={name}
+                  shape={node.inputShapes?.[i] !== undefined ? (formatShape(node.inputShapes[i]) || 'unknown') : undefined}
+                  fieldKey={onRenameTensor ? `input:${i}` : undefined}
+                  edit={onRenameTensor ? fieldEdit : undefined}
+                />
+                {constValues && (
+                  <div style={{ ...rowStyle, gap: 8, paddingLeft: 12 }}>
+                    <span style={{ color: 'var(--text-dim)', fontSize: 10, flexShrink: 0 }}>= </span>
+                    {onReplaceConstant ? (
+                      <EditableText fieldKey={`const:${name}`} value={constValues.join(', ')} edit={fieldEdit} testIdPrefix="const" title={`Edit constant ${name}`} textStyle={{ fontSize: 10 }} />
+                    ) : (
+                      <span style={{ color: 'var(--text-secondary)', fontSize: 10, wordBreak: 'break-word' }}>{constValues.join(', ')}</span>
+                    )}
+                  </div>
                 )}
               </div>
             )
@@ -452,21 +579,48 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
         </>
       )}
 
-      {node.inputs.length > 0 && (
-        <>
-          {sectionHeader('Inputs')}
-          {node.inputs.map((inp, i) => (
-            <IORow key={inp || i} name={inp || `input_${i}`} shape={node.inputShapes?.[i] !== undefined ? (formatShape(node.inputShapes[i]) || 'unknown') : undefined} />
-          ))}
-        </>
-      )}
-
       {node.outputs.length > 0 && (
         <>
           {sectionHeader('Outputs')}
-          {node.outputs.map((out, i) => (
-            <IORow key={out || i} name={out || `output_${i}`} shape={node.outputShapes?.[i] !== undefined ? (formatShape(node.outputShapes[i]) || 'unknown') : undefined} />
-          ))}
+          {node.outputs.map((out, i) => {
+            const name = out || `output_${i}`
+            return (
+              <IORow
+                key={name + i}
+                name={name}
+                shape={node.outputShapes?.[i] !== undefined ? (formatShape(node.outputShapes[i]) || 'unknown') : undefined}
+                fieldKey={onRenameTensor ? `output:${i}` : undefined}
+                edit={onRenameTensor ? fieldEdit : undefined}
+                onPromote={isCompute && onPromoteOutput ? () => onPromoteOutput(name) : undefined}
+              />
+            )
+          })}
+        </>
+      )}
+
+      {!isCompute && onSetGraphIO && (
+        <>
+          {sectionHeader('Declared Type')}
+          <div style={rowStyle}>
+            <span style={labelStyle} title="ONNX elem_type: 1=float32, 2=uint8, 3=int8, 6=int32, 7=int64, 9=bool, 10=float16, 11=double">ELEM TYPE</span>
+            <EditableText
+              fieldKey="iotype"
+              value={String((node.opType === 'Input' ? node.outputMetadata?.[0]?.elemType : node.inputMetadata?.[0]?.elemType) ?? '')}
+              edit={fieldEdit}
+              testIdPrefix="io"
+              title="Edit the declared element type (ONNX elem_type enum)"
+            />
+          </div>
+          <div style={rowStyle}>
+            <span style={labelStyle} title="Comma-separated dims; a non-numeric token is a symbolic dimension (batch, N, ...); empty means unranked">SHAPE</span>
+            <EditableText
+              fieldKey="ioshape"
+              value={formatShapeForEdit(node.opType === 'Input' ? node.outputShapes?.[0] : node.inputShapes?.[0])}
+              edit={fieldEdit}
+              testIdPrefix="io"
+              title="Edit the declared shape"
+            />
+          </div>
         </>
       )}
 

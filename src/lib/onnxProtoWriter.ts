@@ -14,6 +14,10 @@ import {
   WIRE_32BIT,
   MODEL_GRAPH,
   GRAPH_NODE,
+  GRAPH_INIT,
+  GRAPH_INPUT,
+  GRAPH_OUTPUT,
+  GRAPH_VALUE_INFO,
   NODE_INPUT,
   NODE_OUTPUT,
   NODE_NAME,
@@ -26,6 +30,20 @@ import {
   ATTR_INTS,
   ATTR_FLOATS,
   ATTR_TYPE,
+  INIT_NAME,
+  INIT_RAW_DATA,
+  VINFO_NAME,
+  VINFO_TYPE,
+  TYPE_TENSOR,
+  TENSOR_ELEM_TYPE,
+  TENSOR_SHAPE,
+  SHAPE_DIM,
+  DIM_VALUE,
+  DIM_PARAM,
+  DATA_TYPE_BYTES,
+  readTopLevelStringField,
+  parseInitializer,
+  type OnnxDim,
 } from './onnxProtoParser'
 
 // Structural edits are keyed by the node's original position in GraphProto.node
@@ -43,6 +61,16 @@ export type StructuralOp =
   // negates it to get the entry's origIndex) -- rewire ops reference the resulting
   // node the same way they reference any original node, via that negative index.
   | { type: 'addNode'; newNodeIndex: number; opType: string; inputCount: number }
+  | { type: 'renameNode'; nodeIndex: number; name: string }
+  | { type: 'renameTensor'; oldName: string; newName: string }
+  // ioIndex is the 0-based position within GraphProto.input/output, matching
+  // graphUtils.graphIOIndex. dims: null omits the shape field (unranked), not
+  // an empty/scalar shape.
+  | { type: 'setGraphIO'; ioKind: 'input' | 'output'; ioIndex: number; elemType: number; dims: OnnxDim[] | null }
+  | { type: 'promoteOutput'; tensorName: string }
+  // values.length must equal the initializer's current element count -- see
+  // SMALL_TENSOR_MAX_ELEMENTS in onnxProtoParser.ts.
+  | { type: 'replaceConstant'; initializerName: string; values: number[] }
 
 type AttrKind = 'I' | 'F' | 'S' | 'INTS' | 'FLOATS' | 'OTHER'
 
@@ -292,6 +320,73 @@ function rewireInputAtPosition(bytes: Uint8Array, position: number, to: string):
   )
 }
 
+// Replaces every NODE_OUTPUT occurrence whose value equals `from` -- the
+// output-side counterpart to rewireInputsByValue above, used by renameTensor.
+function renameOutputsByValue(bytes: Uint8Array, from: string, to: string): Uint8Array {
+  return patchLenFields(bytes, NODE_OUTPUT, (_occ, sub) =>
+    new TextDecoder().decode(sub) === from ? new TextEncoder().encode(to) : null,
+  )
+}
+
+// Insert-or-replace a top-level string field -- patchLenFields alone can only
+// replace an EXISTING occurrence, but a node that never had a name (a common,
+// valid ONNX state) needs one appended instead. Used for both NodeProto.name
+// (renameNode) and TensorProto/ValueInfoProto.name (renameTensor).
+function setStringField(bytes: Uint8Array, field: number, value: string): Uint8Array {
+  let found = false
+  const patched = patchLenFields(bytes, field, () => { found = true; return new TextEncoder().encode(value) })
+  return found ? patched : concatBytes([bytes, encodeStringField(field, value)])
+}
+
+function encodeDimension(dim: OnnxDim): Uint8Array {
+  return 'value' in dim ? encodeInt64Field(DIM_VALUE, dim.value) : encodeStringField(DIM_PARAM, dim.param)
+}
+
+// dims: null omits TypeProto.Tensor.shape entirely (unranked); [] encodes an
+// empty-but-present TensorShapeProto (rank 0, a scalar) -- those are different
+// things in ONNX and callers must pick deliberately, not default one to the other.
+export function encodeValueInfo(name: string, elemType: number, dims: OnnxDim[] | null): Uint8Array {
+  const shapeField = dims ? encodeLenField(TENSOR_SHAPE, concatBytes(dims.map((d) => encodeLenField(SHAPE_DIM, encodeDimension(d))))) : new Uint8Array(0)
+  const tensorType = concatBytes([encodeVarintField(TENSOR_ELEM_TYPE, elemType), shapeField])
+  const typeProto = encodeLenField(TYPE_TENSOR, tensorType)
+  return concatBytes([encodeStringField(VINFO_NAME, name), encodeLenField(VINFO_TYPE, typeProto)])
+}
+
+// Fixed-width little-endian writers, the encode-side mirror of
+// onnxProtoParser.ts's ELEM_TYPE_READERS. FLOAT16/BFLOAT16 are absent there
+// (no half-float decode in this codebase) so a small constant of that dtype
+// never gets an inspectable `values` array in the first place -- replaceConstant
+// can only be reached for a dtype this table also covers.
+const ELEM_TYPE_WRITERS: Record<number, (view: DataView, offset: number, value: number) => void> = {
+  1: (v, o, x) => v.setFloat32(o, x, true),
+  2: (v, o, x) => v.setUint8(o, x),
+  3: (v, o, x) => v.setInt8(o, x),
+  4: (v, o, x) => v.setUint16(o, x, true),
+  5: (v, o, x) => v.setInt16(o, x, true),
+  6: (v, o, x) => v.setInt32(o, x, true),
+  7: (v, o, x) => v.setBigInt64(o, BigInt(Math.trunc(x)), true),
+  9: (v, o, x) => v.setUint8(o, x ? 1 : 0),
+  11: (v, o, x) => v.setFloat64(o, x, true),
+  12: (v, o, x) => v.setUint32(o, x, true),
+  13: (v, o, x) => v.setBigUint64(o, BigInt(Math.max(0, Math.trunc(x))), true),
+}
+
+function encodeRawData(elemType: number, values: number[]): Uint8Array {
+  const writer = ELEM_TYPE_WRITERS[elemType]
+  const bytesPerElem = DATA_TYPE_BYTES[elemType]
+  if (!writer || !bytesPerElem) throw new Error(`Unsupported constant data type: ${elemType}`)
+  const buf = new ArrayBuffer(values.length * bytesPerElem)
+  const view = new DataView(buf)
+  values.forEach((value, i) => writer(view, i * bytesPerElem, value))
+  return new Uint8Array(buf)
+}
+
+function setRawData(bytes: Uint8Array, rawData: Uint8Array): Uint8Array {
+  let found = false
+  const patched = patchLenFields(bytes, INIT_RAW_DATA, () => { found = true; return rawData })
+  return found ? patched : concatBytes([bytes, encodeLenField(INIT_RAW_DATA, rawData)])
+}
+
 // Delete and insertPassthrough never change relative node order (delete only
 // removes; insert always splices its new node immediately before its consumer),
 // so they can't break ONNX's topological-order requirement. Rewire is different:
@@ -328,13 +423,73 @@ function topologicalSort(entries: NodeEntry[]): NodeEntry[] {
 // within the same export.
 const PASSTHROUGH_SENTINEL_BASE = -1_000_000
 
-function applyStructuralOps(nodeEntries: NodeEntry[], structuralOps: StructuralOp[]): NodeEntry[] {
-  let entries = nodeEntries
+interface NamedEntry { name: string; bytes: Uint8Array }
+
+// GraphProto's node/initializer/input/output lists, decoded into named or
+// indexed entries so v2.3's deployment ops (rename, retype, promote, replace)
+// can address and rewrite any of them -- not just nodes, which is all the
+// pre-v2.3 structural ops (delete/insertPassthrough/rewire/addNode) ever
+// needed. Everything else in GraphProto (name, doc_string, value_info,
+// sparse_initializer, ...) stays in otherChunks, untouched and unindexed --
+// none of the ops below target it, and value_info in particular is informational
+// only, so a rename leaving it stale under the old name is a cosmetic gap, not
+// a correctness one.
+interface DecodedGraph {
+  nodes: NodeEntry[]
+  initializers: NamedEntry[]
+  graphInputs: NamedEntry[]
+  graphOutputs: NamedEntry[]
+  // Read-only: never itself rewritten, only consulted for promoteOutput's
+  // knownValueInfo lookup. Its raw bytes are also always present in
+  // otherChunks, which is what actually preserves it in the output.
+  valueInfo: NamedEntry[]
+  otherChunks: Uint8Array[]
+}
+
+function applyStructuralOps(decoded: DecodedGraph, structuralOps: StructuralOp[]): DecodedGraph {
+  let entries = decoded.nodes
+  let initializers = decoded.initializers
+  let graphInputs = decoded.graphInputs
+  let graphOutputs = decoded.graphOutputs
   let insertCounter = 0
   let needsTopoSort = false
 
+  // Static snapshot from decode time (see decodeGraphContent) -- promoteOutput's
+  // best-effort reuse of a tensor's existing declared type, not re-derived after
+  // every op, so it can miss a same-batch rename's new name and fall back to an
+  // unranked declaration. A valid result either way, just possibly less precise.
+  const knownValueInfo = new Map<string, Uint8Array>()
+  for (const entry of [...decoded.graphInputs, ...decoded.graphOutputs, ...decoded.valueInfo]) knownValueInfo.set(entry.name, entry.bytes)
+
   for (const op of structuralOps) {
-    if (op.type === 'delete') {
+    if (op.type === 'renameNode') {
+      entries = entries.map((e) => (e.origIndex === op.nodeIndex ? decodeEntry(e.origIndex, setStringField(e.bytes, NODE_NAME, op.name)) : e))
+    } else if (op.type === 'renameTensor') {
+      const { oldName, newName } = op
+      entries = entries.map((e) => decodeEntry(e.origIndex, renameOutputsByValue(rewireInputsByValue(e.bytes, oldName, newName), oldName, newName)))
+      initializers = initializers.map((i) => (i.name === oldName ? { name: newName, bytes: setStringField(i.bytes, INIT_NAME, newName) } : i))
+      graphInputs = graphInputs.map((i) => (i.name === oldName ? { name: newName, bytes: setStringField(i.bytes, VINFO_NAME, newName) } : i))
+      graphOutputs = graphOutputs.map((o) => (o.name === oldName ? { name: newName, bytes: setStringField(o.bytes, VINFO_NAME, newName) } : o))
+    } else if (op.type === 'setGraphIO') {
+      const pool = op.ioKind === 'input' ? graphInputs : graphOutputs
+      const entry = pool[op.ioIndex]
+      if (!entry) continue
+      const next = { name: entry.name, bytes: encodeValueInfo(entry.name, op.elemType, op.dims) }
+      if (op.ioKind === 'input') graphInputs = graphInputs.map((e, i) => (i === op.ioIndex ? next : e))
+      else graphOutputs = graphOutputs.map((e, i) => (i === op.ioIndex ? next : e))
+    } else if (op.type === 'promoteOutput') {
+      if (graphOutputs.some((o) => o.name === op.tensorName)) continue // already an output
+      const bytes = knownValueInfo.get(op.tensorName) ?? encodeValueInfo(op.tensorName, 1, null)
+      graphOutputs = [...graphOutputs, { name: op.tensorName, bytes }]
+    } else if (op.type === 'replaceConstant') {
+      const idx = initializers.findIndex((i) => i.name === op.initializerName)
+      if (idx === -1) continue
+      const entry = initializers[idx]
+      const parsed = parseInitializer(new ProtoReader(entry.bytes))
+      if (op.values.length !== parsed.elemCount) continue
+      const rawData = encodeRawData(parsed.elemType, op.values)
+      initializers = initializers.map((i, i2) => (i2 === idx ? { name: i.name, bytes: setRawData(entry.bytes, rawData) } : i))
+    } else if (op.type === 'delete') {
       const idx = entries.findIndex((e) => e.origIndex === op.nodeIndex)
       if (idx === -1) continue
       const entry = entries[idx]
@@ -387,15 +542,23 @@ function applyStructuralOps(nodeEntries: NodeEntry[], structuralOps: StructuralO
     }
   }
 
-  return needsTopoSort ? topologicalSort(entries) : entries
+  return {
+    nodes: needsTopoSort ? topologicalSort(entries) : entries,
+    initializers,
+    graphInputs,
+    graphOutputs,
+    valueInfo: decoded.valueInfo,
+    otherChunks: decoded.otherChunks,
+  }
 }
 
-// Decodes graphContent into per-node entries (applying attribute overrides along
-// the way) plus every other field's bytes untouched, applies structuralOps, then
-// re-encodes. Node entries are hoisted before other fields in the output, which is
-// safe -- protobuf field order across distinct field numbers is not meaningful,
-// only the relative order AMONG node entries (topological) matters, and that's
-// preserved by construction above.
+// Decodes graphContent into named/indexed entry pools (applying attribute
+// overrides to nodes along the way) plus every other field's bytes untouched,
+// applies structuralOps, then re-encodes. Node entries are hoisted before
+// other fields in the output, which is safe -- protobuf field order across
+// distinct field numbers is not meaningful, only the relative order AMONG
+// node entries (topological) matters, and that's preserved by construction
+// in applyStructuralOps.
 function rewriteGraphContent(
   graphContent: Uint8Array,
   overridesByNodeIndex: Map<number, Record<string, string | number>>,
@@ -403,7 +566,11 @@ function rewriteGraphContent(
 ): Uint8Array {
   const r = new ProtoReader(graphContent)
   const otherChunks: Uint8Array[] = []
-  let entries: NodeEntry[] = []
+  const nodes: NodeEntry[] = []
+  const initializers: NamedEntry[] = []
+  const graphInputs: NamedEntry[] = []
+  const graphOutputs: NamedEntry[] = []
+  const valueInfo: NamedEntry[] = []
   let nodeOccurrence = 0
 
   while (!r.done) {
@@ -415,18 +582,29 @@ function rewriteGraphContent(
       const subStart = r.pos
       r.skip(len)
       const fieldEnd = r.pos
+      const sub = graphContent.subarray(subStart, fieldEnd)
       if (tag.field === GRAPH_NODE) {
-        const nodeBytes = graphContent.subarray(subStart, fieldEnd)
         const overrides = overridesByNodeIndex.get(nodeOccurrence)
         const patchedBytes = overrides
-          ? patchLenFields(nodeBytes, NODE_ATTR, (_attrIdx, attrContent) => {
+          ? patchLenFields(sub, NODE_ATTR, (_attrIdx, attrContent) => {
               const { name, kind } = identifyAttr(attrContent)
               if (kind === 'OTHER' || !(name in overrides)) return null
               return buildEditedAttrContent(name, kind, overrides[name])
             })
-          : nodeBytes
-        entries.push(decodeEntry(nodeOccurrence, patchedBytes))
+          : sub
+        nodes.push(decodeEntry(nodeOccurrence, patchedBytes))
         nodeOccurrence++
+      } else if (tag.field === GRAPH_INIT) {
+        initializers.push({ name: readTopLevelStringField(sub, INIT_NAME), bytes: sub })
+      } else if (tag.field === GRAPH_INPUT) {
+        graphInputs.push({ name: readTopLevelStringField(sub, VINFO_NAME), bytes: sub })
+      } else if (tag.field === GRAPH_OUTPUT) {
+        graphOutputs.push({ name: readTopLevelStringField(sub, VINFO_NAME), bytes: sub })
+      } else if (tag.field === GRAPH_VALUE_INFO) {
+        // Captured for knownValueInfo (see DecodedGraph) AND still pushed to
+        // otherChunks below -- it's read for lookups but never itself rewritten.
+        valueInfo.push({ name: readTopLevelStringField(sub, VINFO_NAME), bytes: sub })
+        otherChunks.push(graphContent.subarray(fieldStart, fieldEnd))
       } else {
         otherChunks.push(graphContent.subarray(fieldStart, fieldEnd))
       }
@@ -436,9 +614,14 @@ function rewriteGraphContent(
     }
   }
 
-  entries = applyStructuralOps(entries, structuralOps)
-  const nodeChunks = entries.map((e) => encodeLenField(GRAPH_NODE, e.bytes))
-  return concatBytes([...nodeChunks, ...otherChunks])
+  const result = applyStructuralOps({ nodes, initializers, graphInputs, graphOutputs, valueInfo, otherChunks }, structuralOps)
+  return concatBytes([
+    ...result.nodes.map((e) => encodeLenField(GRAPH_NODE, e.bytes)),
+    ...result.initializers.map((i) => encodeLenField(GRAPH_INIT, i.bytes)),
+    ...result.graphInputs.map((i) => encodeLenField(GRAPH_INPUT, i.bytes)),
+    ...result.graphOutputs.map((o) => encodeLenField(GRAPH_OUTPUT, o.bytes)),
+    ...result.otherChunks,
+  ])
 }
 
 // overridesByNodeIndex is keyed by the node's position in GraphProto.node (0-based),

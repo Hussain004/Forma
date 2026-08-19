@@ -5,6 +5,10 @@ export type { OnnxDim, ParsedValueInfo, ModelMetadata }
 export interface TensorMetadata {
   shape?: OnnxDim[]
   elemType?: number
+  // Only set for a small initializer (see SMALL_TENSOR_MAX_ELEMENTS) -- lets
+  // the inspector show and edit a constant like a Reshape target shape or a
+  // scalar bias inline, without attempting the same for a weight tensor.
+  values?: number[]
 }
 
 export interface OnnxNode {

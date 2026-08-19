@@ -126,6 +126,12 @@ function encodeHistoryEntry(entry: HistoryEntry): EncodedEdit {
         entry.position.x,
         entry.position.y,
       ]
+    // v2.3's deployment-surgery edits (rename node/tensor, graph I/O
+    // type/shape, promote output, replace constant) aren't in the compact
+    // wire format yet -- rather than silently drop them from a shared link,
+    // sharing an edit sequence that contains one fails clearly instead.
+    default:
+      throw new ShareLinkError(`Sharing does not yet support "${entry.type}" edits`)
   }
 }
 
