@@ -185,6 +185,16 @@ export function useOnnxWorker() {
     })
   }, [])
 
+  const extractSubgraph = useCallback((selectedIndices: number[]): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+      if (!workerRef.current) { reject(new Error('No worker')); return }
+      exportResolve.current = resolve
+      exportReject.current = reject
+      setStatus('exporting')
+      workerRef.current.postMessage({ type: 'EXTRACT_SUBGRAPH', payload: { selectedIndices } })
+    })
+  }, [])
+
   const runValidation = useCallback((
     overrides: Map<number, Record<string, string | number>>,
     structuralOps: StructuralOp[],
@@ -198,5 +208,5 @@ export function useOnnxWorker() {
     })
   }, [])
 
-  return { loadModel, runInference, runBenchmark, exportModel, exportModifiedModel, runValidation, graph, status, error, operationError, verifyResult, progress, benchmarkResult, quantizeEstimate }
+  return { loadModel, runInference, runBenchmark, exportModel, exportModifiedModel, runValidation, extractSubgraph, graph, status, error, operationError, verifyResult, progress, benchmarkResult, quantizeEstimate }
 }

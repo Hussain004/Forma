@@ -24,10 +24,10 @@ const OPSET_VERSION = 2
 // GraphProto fields
 export const GRAPH_NODE = 1
 const GRAPH_NAME = 2
-const GRAPH_INIT = 5
-const GRAPH_INPUT = 11
+export const GRAPH_INIT = 5
+export const GRAPH_INPUT = 11
 export const GRAPH_OUTPUT = 12
-const GRAPH_VALUE_INFO = 13  // intermediate tensor shapes
+export const GRAPH_VALUE_INFO = 13  // intermediate tensor shapes
 
 // NodeProto fields
 export const NODE_INPUT = 1
@@ -48,17 +48,17 @@ export const ATTR_TYPE = 20   // AttributeType enum (validated by strict parsers
 // TensorProto fields (initializers)
 const INIT_DIMS = 1
 const INIT_DATA_TYPE = 2
-const INIT_NAME = 8
+export const INIT_NAME = 8
 
 // ValueInfoProto fields
-const VINFO_NAME = 1
-const VINFO_TYPE = 2
+export const VINFO_NAME = 1
+export const VINFO_TYPE = 2
 
 // TypeProto fields
-const TYPE_TENSOR = 1
+export const TYPE_TENSOR = 1
 
 // TypeProto.Tensor fields
-const TENSOR_ELEM_TYPE = 1
+export const TENSOR_ELEM_TYPE = 1
 const TENSOR_SHAPE = 2
 
 // TensorShapeProto fields

@@ -49,7 +49,7 @@ type AttrKind = 'I' | 'F' | 'S' | 'INTS' | 'FLOATS' | 'OTHER'
 // AttributeProto.AttributeType enum values (onnx.proto3)
 const ATTR_TYPE_ENUM: Record<AttrKind, number> = { F: 1, I: 2, S: 3, FLOATS: 6, INTS: 7, OTHER: 0 }
 
-function concatBytes(chunks: Uint8Array[]): Uint8Array {
+export function concatBytes(chunks: Uint8Array[]): Uint8Array {
   const total = chunks.reduce((sum, c) => sum + c.length, 0)
   const out = new Uint8Array(total)
   let offset = 0
@@ -93,11 +93,11 @@ function encodeTag(field: number, wire: number): Uint8Array {
   return encodeVarint((field << 3) | wire)
 }
 
-function encodeLenField(field: number, content: Uint8Array): Uint8Array {
+export function encodeLenField(field: number, content: Uint8Array): Uint8Array {
   return concatBytes([encodeTag(field, WIRE_LEN), encodeVarint(content.length), content])
 }
 
-function encodeVarintField(field: number, value: number): Uint8Array {
+export function encodeVarintField(field: number, value: number): Uint8Array {
   return concatBytes([encodeTag(field, WIRE_VARINT), encodeVarint(value)])
 }
 
@@ -109,7 +109,7 @@ function encode32BitField(field: number, value: number): Uint8Array {
   return concatBytes([encodeTag(field, WIRE_32BIT), encodeFloat32(value)])
 }
 
-function encodeStringField(field: number, value: string): Uint8Array {
+export function encodeStringField(field: number, value: string): Uint8Array {
   return encodeLenField(field, new TextEncoder().encode(value))
 }
 
@@ -121,7 +121,7 @@ function parseArrayString(s: string): number[] {
 // length-delimited field) for which `patcher` returns non-null. Everything else --
 // other fields, and occurrences where patcher returns null -- is copied through
 // verbatim, byte for byte.
-function patchLenFields(
+export function patchLenFields(
   content: Uint8Array,
   targetField: number,
   patcher: (occurrenceIndex: number, subContent: Uint8Array) => Uint8Array | null,
@@ -221,7 +221,7 @@ interface NodeEntry {
   outputs: string[]
 }
 
-function decodeNodeIO(nodeBytes: Uint8Array): { inputs: string[]; outputs: string[] } {
+export function decodeNodeIO(nodeBytes: Uint8Array): { inputs: string[]; outputs: string[] } {
   const r = new ProtoReader(nodeBytes)
   const inputs: string[] = []
   const outputs: string[] = []

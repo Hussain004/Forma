@@ -11,7 +11,7 @@ import { useOnnxWorker } from './hooks/useOnnxWorker'
 import { isNpyBuffer, isNpzBuffer, parseNpy, parseNpz, type ParsedArray } from './lib/npyParser'
 import type { ValidationRunResult } from './lib/validationUtils'
 import type { ProvidedValidationInput } from './workers/onnxWorker'
-import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, validateRewire, rewireEdge, addCustomNode, structuralNodeIndex, buildGraphDiff, CURATED_NODE_TYPES, type SelectableGraph } from './lib/graphUtils'
+import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, validateRewire, rewireEdge, addCustomNode, structuralNodeIndex, buildGraphDiff, isConnectedSubgraph, CURATED_NODE_TYPES, type SelectableGraph } from './lib/graphUtils'
 import type { HistoryEntry, StructuralHistoryEntry } from './lib/graphUtils'
 import { formatQuantizeEstimate } from './lib/quantize'
 import type { OnnxNode } from './lib/onnxTypes'
@@ -589,7 +589,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
 }
 
 function App() {
-  const { loadModel, runBenchmark, exportModel, exportModifiedModel, runValidation, graph, status, error, operationError, verifyResult, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
+  const { loadModel, runBenchmark, exportModel, exportModifiedModel, runValidation, extractSubgraph, graph, status, error, operationError, verifyResult, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
   // TFLite support is read-only: no inference session ever exists for it (no TFLite
   // runtime in this project), so attribute/structural editing, Benchmark, and Export
   // Modified are all withheld for it -- see tfliteParser.ts and onnxWorker.ts.
@@ -1142,6 +1142,38 @@ function App() {
 
   const handleBulkDelete = () => applyBulkDelete(selectedNodeIds)
 
+  // Minimal-repro extraction always operates on the ORIGINAL model, never the
+  // active edit state -- see subgraphExtractor.ts. Selected nodes must
+  // therefore all be original nodes (structuralNodeIndex >= 0, excludes
+  // custom/passthrough nodes and the Input/Output pseudo-nodes) and must form
+  // one connected piece of the pristine graph, checked against
+  // `selectableGraph` (the unedited graph) rather than the edited one.
+  const handleExtractRepro = () => {
+    if (!selectableGraph) return
+    const indices = [...selectedNodeIds].map((id) => structuralNodeIndex(id))
+    if (indices.some((idx) => idx === null || idx < 0)) {
+      announce('Extraction only supports selecting nodes from the original model', 'reject')
+      return
+    }
+    if (!isConnectedSubgraph(selectableGraph, selectedNodeIds)) {
+      announce('Selected nodes must form a single connected subgraph', 'reject')
+      return
+    }
+    announce('Extracting minimal repro... verification result will follow')
+    extractSubgraph(indices as number[]).then((buf) => {
+      const blob = new Blob([buf], { type: 'application/octet-stream' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const baseName = (graph?.modelName ?? 'model').replace(/\.[^.]+$/, '')
+      a.download = baseName + '_repro.onnx'
+      a.click()
+      URL.revokeObjectURL(url)
+    }).catch((extractErr) => {
+      announce(extractErr instanceof Error ? extractErr.message : 'Extraction failed', 'reject')
+    })
+  }
+
   // Fired by GraphCanvas when a drag-to-connect lands on a specific input handle.
   // validateRewire covers the self-connection/original-node/cycle checks; an
   // invalid drop is silently ignored, same convention as handleEdgeClick below.
@@ -1693,7 +1725,7 @@ function App() {
                       onJumpToState={handleHistoryJump}
                     />
                   ) : (
-                    <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} onCopy={() => announce('Copied to clipboard')} />
+                    <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onExtractRepro={isReadOnly ? undefined : handleExtractRepro} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} onCopy={() => announce('Copied to clipboard')} />
                   )}
                 </div>
               </div>

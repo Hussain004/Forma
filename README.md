@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-2.1.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-2.2.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -104,6 +104,15 @@ fingerprint before any edits are replayed.
 - Results are recorded per edit state (by its actual sequence of applied edits, not by index), so switching between undo/redo/history-jump points recalls prior results instead of losing them
 - Unavailable for read-only TFLite models, consistent with every other edit-related feature
 
+### Minimal Repro Extraction
+
+- Select a connected cluster of nodes (Ctrl/Meta+click or Shift+drag box-select) and choose Extract Repro to export just that piece as a standalone, valid ONNX file
+- Boundary tensors -- anything a selected node reads that isn't produced inside the selection, or produces that isn't consumed inside it -- are promoted to fresh graph inputs and outputs automatically
+- Weights the selection actually depends on are carried over as initializers; everything else from the original model is left out
+- Reuses the original tensor's declared shape and type when one exists (an original graph input/output, or an intermediate tensor the model already annotated); otherwise falls back to an unranked float32 declaration
+- Always extracts from the originally loaded model, not the current edit state, and always validates the result the same way Export Modified does: a real onnxruntime load, reported in the status line
+- Requires the selection to be a single connected piece and made up only of original model nodes; either violation is rejected before anything is sent to the worker
+
 ### TFLite Support (Read-Only)
 
 - Format detected by the file's own identifier bytes, not just its extension, so drag-and-drop works correctly regardless of how the file is named
@@ -128,12 +137,13 @@ fingerprint before any edits are replayed.
 - Schema-aware binary protobuf parser for full graph metadata extraction
 - Hand-written binary FlatBuffers parser for TFLite, independent of the protobuf parser -- a completely different wire format (table/vtable/offset-based rather than tag/varint-based), verified against the authoritative TFLite schema
 - Byte-preserving protobuf writer: patches only the fields that changed, leaving everything else (including large initializer tensors) untouched; structural edits (node delete/insert/rewire/add) use an array-based rewrite that preserves topological node order, re-sorting via DFS postorder when a rewire or a newly added node connects to something serialized later in the original file
+- Minimal-repro extraction reuses the writer's low-level protobuf primitives to build a fresh GraphProto (only the selected nodes, their required initializers, and synthesized or reused ValueInfoProto for promoted boundary tensors) while everything outside GraphProto still passes through byte-for-byte
 - Both parsers build the same graph representation through a shared generic layer, so the graph canvas and inspector need no format-specific code
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
 - Compact, versioned share-link codec with strict URL validation and browser-native SHA-256 verification
 - Hand-written `.npy`/`.npz` reader (no zip library dependency): a minimal central-directory ZIP walk plus the browser's native `DecompressionStream` for DEFLATE entries
-- 318 tests across 22 files; zero TypeScript errors on strict mode
+- 332 tests across 23 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -189,6 +199,7 @@ Browser (main thread)
       EXPORT            -> EXPORT_RESULT (ArrayBuffer transfer)
       EXPORT_MODIFIED   -> EXPORT_RESULT (attribute and structural edits patched into the original buffer, ONNX only)
       VALIDATE          -> VALIDATION_RESULT (two throwaway sessions -- original bytes and patched bytes -- run against identical inputs; comparison math runs back on the main thread)
+      EXTRACT_SUBGRAPH  -> EXPORT_RESULT + VERIFY_RESULT (selected original nodes only, boundary tensors promoted to graph I/O, verified the same way as EXPORT_MODIFIED)
 ```
 
 **Web Worker isolation:** WASM model loading and inference are blocking operations. Isolating them in a worker keeps the UI at 60 fps regardless of model size. The `useOnnxWorker` hook exposes a clean async interface with typed status transitions.
@@ -229,6 +240,8 @@ src/
                           and buildGraphDiff for the original-versus-current overlay
     shareLinks.ts         Compact URL-hash codec, model fingerprinting, input validation,
                           and verified history reconstruction
+    subgraphExtractor.ts  Minimal-repro extraction: selected-nodes-only GraphProto rebuild
+                          with boundary tensors promoted to fresh graph inputs/outputs
     quantize.ts           INT8 size estimation and formatting
   workers/
     onnxWorker.ts         Web Worker: LOAD_MODEL (format-sniffed), BENCHMARK, EXPORT, EXPORT_MODIFIED
@@ -276,6 +289,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 2.2.0 | Minimal reproductions: extract a selected connected subgraph as a standalone, validated ONNX file with boundary tensors promoted to graph I/O |
 | 2.1.0 | Behavioral validation: run the original and edited model against identical `.npy`/`.npz` or generated inputs and compare outputs |
 | 2.0.0 | Shareable URL-hash edit sequences with SHA-256 original-model verification and automatic history replay |
 | 1.8.0 | Rewire tensor compatibility validation for known types, ranks, and concrete dimensions |

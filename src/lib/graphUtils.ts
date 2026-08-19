@@ -281,6 +281,34 @@ export function getDescendants(graph: Pick<OnnxGraph, 'nodes' | 'edges'>, nodeId
   return result
 }
 
+// Weak (undirected) connectivity over the induced subgraph: a minimal-repro
+// extraction only makes sense as one connected piece, but the direction of
+// any individual edge within it doesn't matter for that check.
+export function isConnectedSubgraph(graph: Pick<OnnxGraph, 'edges'>, nodeIds: Set<string>): boolean {
+  if (nodeIds.size <= 1) return true
+  const adjacency = new Map<string, string[]>()
+  const link = (a: string, b: string) => {
+    const list = adjacency.get(a)
+    if (list) list.push(b)
+    else adjacency.set(a, [b])
+  }
+  for (const e of graph.edges) {
+    if (!nodeIds.has(e.source) || !nodeIds.has(e.target)) continue
+    link(e.source, e.target)
+    link(e.target, e.source)
+  }
+  const start = nodeIds.values().next().value as string
+  const visited = new Set([start])
+  const stack = [start]
+  while (stack.length > 0) {
+    const current = stack.pop() as string
+    for (const next of adjacency.get(current) ?? []) {
+      if (!visited.has(next)) { visited.add(next); stack.push(next) }
+    }
+  }
+  return visited.size === nodeIds.size
+}
+
 // Only nodes parsed directly from the loaded model (id format `node_<idx>_<opType>`)
 // or added via addCustomNode (id format `custom_<n>`) are valid structural-edit
 // targets. Synthetic nodes created by insertPassthroughNode use a different id
