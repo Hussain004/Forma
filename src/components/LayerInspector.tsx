@@ -28,6 +28,7 @@ interface LayerInspectorProps {
   onBulkExclude?: () => void
   onBulkInclude?: () => void
   onBulkDelete?: () => void
+  onExtractRepro?: () => void
   onAttrEdit?: (nodeId: string, attrName: string, value: string | number) => void
   onDeleteNode?: (nodeId: string, keepInputPosition: number | null) => void
   deleteEligibility?: DeleteEligibility
@@ -132,7 +133,7 @@ function sensitivityColor(params: number): string {
   return '#52C57A'
 }
 
-export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onBulkDelete, onAttrEdit, onDeleteNode, deleteEligibility, onCopy }: LayerInspectorProps) {
+export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onBulkDelete, onExtractRepro, onAttrEdit, onDeleteNode, deleteEligibility, onCopy }: LayerInspectorProps) {
   const [editingAttr, setEditingAttr] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [hoveredAttr, setHoveredAttr] = useState<string | null>(null)
@@ -189,6 +190,17 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           <button onClick={onBulkInclude} className="btn-ghost" style={bulkButtonStyle}>INCLUDE ALL</button>
           {onBulkDelete && (
             <button data-testid="bulk-delete-button" onClick={onBulkDelete} className="btn-danger" style={bulkButtonStyle}>DELETE ALL</button>
+          )}
+          {onExtractRepro && (
+            <button
+              data-testid="extract-repro-button"
+              onClick={onExtractRepro}
+              title="Export just this selection as a standalone ONNX file: boundary tensors become new graph inputs/outputs, required weights are preserved"
+              className="btn-bar"
+              style={bulkButtonStyle}
+            >
+              EXTRACT REPRO
+            </button>
           )}
         </div>
       </div>

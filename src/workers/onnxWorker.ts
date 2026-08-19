@@ -3,6 +3,7 @@ import { parseOnnxGraph } from '../lib/onnxParser'
 import { isTfliteBuffer, parseTfliteGraph } from '../lib/tfliteParser'
 import { estimateInt8Size, compressionRatio } from '../lib/quantize'
 import { writeModifiedOnnx, type StructuralOp } from '../lib/onnxProtoWriter'
+import { extractSubgraph } from '../lib/subgraphExtractor'
 import type { OnnxGraph } from '../lib/onnxTypes'
 import type { SideRunResult, ValidationRunResult } from '../lib/validationUtils'
 
@@ -27,6 +28,7 @@ type WorkerCommand =
         providedInputs: Record<string, ProvidedValidationInput> | null
       }
     }
+  | { type: 'EXTRACT_SUBGRAPH'; payload: { selectedIndices: number[] } }
 
 type WorkerResponse =
   | { type: 'MODEL_LOADED'; payload: OnnxGraph }
@@ -279,6 +281,22 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
         modified,
       }
       ctx.postMessage({ type: 'VALIDATION_RESULT', payload: result })
+    } else if (cmd.type === 'EXTRACT_SUBGRAPH') {
+      if (!exportBuffer) throw new Error('No model loaded')
+      if (isTfliteLoaded) throw new Error('Minimal repro extraction is only available for ONNX models')
+
+      const extracted = extractSubgraph(exportBuffer, new Set(cmd.payload.selectedIndices))
+      const toSend = extracted.slice(0)
+      ctx.postMessage({ type: 'EXPORT_RESULT', payload: toSend }, [toSend])
+      // Same verify-roundtrip pattern as EXPORT_MODIFIED: the file already
+      // downloaded, this just reports whether onnxruntime actually accepts it.
+      try {
+        const verifySession = await ort.InferenceSession.create(extracted)
+        await verifySession.release()
+        ctx.postMessage({ type: 'VERIFY_RESULT', payload: { valid: true } })
+      } catch (verifyErr) {
+        ctx.postMessage({ type: 'VERIFY_RESULT', payload: { valid: false, message: (verifyErr as Error).message } })
+      }
     }
   } catch (err) {
     ctx.postMessage({ type: 'ERROR', payload: (err as Error).message, scope: cmd.type === 'LOAD_MODEL' ? 'load' : 'operation' })
