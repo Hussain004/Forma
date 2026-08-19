@@ -46,9 +46,10 @@ export const ATTR_INTS = 8    // packed repeated int64
 export const ATTR_TYPE = 20   // AttributeType enum (validated by strict parsers)
 
 // TensorProto fields (initializers)
-const INIT_DIMS = 1
-const INIT_DATA_TYPE = 2
+export const INIT_DIMS = 1
+export const INIT_DATA_TYPE = 2
 export const INIT_NAME = 8
+export const INIT_RAW_DATA = 9
 
 // ValueInfoProto fields
 export const VINFO_NAME = 1
@@ -59,17 +60,17 @@ export const TYPE_TENSOR = 1
 
 // TypeProto.Tensor fields
 export const TENSOR_ELEM_TYPE = 1
-const TENSOR_SHAPE = 2
+export const TENSOR_SHAPE = 2
 
 // TensorShapeProto fields
-const SHAPE_DIM = 1
+export const SHAPE_DIM = 1
 
 // Dimension fields
-const DIM_VALUE = 1
-const DIM_PARAM = 2
+export const DIM_VALUE = 1
+export const DIM_PARAM = 2
 
 // Bytes per element for each ONNX data type
-const DATA_TYPE_BYTES: Record<number, number> = {
+export const DATA_TYPE_BYTES: Record<number, number> = {
   1: 4,  // FLOAT
   2: 1,  // UINT8
   3: 1,  // INT8
@@ -107,7 +108,15 @@ export interface ParsedInitializer {
   elemType: number
   elemCount: number
   sizeMB: number
+  // Only populated for small tensors (see SMALL_TENSOR_MAX_ELEMENTS) -- the
+  // "inspect and replace constants" surface is for things like a Reshape's
+  // target shape or a scalar bias, not multi-megabyte weight blobs.
+  values?: number[]
 }
+
+// Constants like a Reshape's target shape or a small bias/threshold are worth
+// showing and editing inline; a weight tensor with thousands of elements is not.
+export const SMALL_TENSOR_MAX_ELEMENTS = 64
 
 export interface ParsedNode {
   inputs: string[]
@@ -299,10 +308,60 @@ function parseValueInfo(r: ProtoReader): ParsedValueInfo {
   return { name, shape, elemType }
 }
 
-function parseInitializer(r: ProtoReader): ParsedInitializer {
+// FLOAT16/BFLOAT16 (10/16) are intentionally absent: reading their raw bits as
+// a number would need a half-float decode this codebase has no other use
+// for, so those tensors just don't get an inspectable `values` array.
+const ELEM_TYPE_READERS: Record<number, (view: DataView, offset: number) => number> = {
+  1: (v, o) => v.getFloat32(o, true),
+  2: (v, o) => v.getUint8(o),
+  3: (v, o) => v.getInt8(o),
+  4: (v, o) => v.getUint16(o, true),
+  5: (v, o) => v.getInt16(o, true),
+  6: (v, o) => v.getInt32(o, true),
+  7: (v, o) => Number(v.getBigInt64(o, true)),
+  9: (v, o) => v.getUint8(o),
+  11: (v, o) => v.getFloat64(o, true),
+  12: (v, o) => v.getUint32(o, true),
+  13: (v, o) => Number(v.getBigUint64(o, true)),
+}
+
+export function readRawDataValues(bytes: Uint8Array, elemType: number, count: number): number[] | null {
+  const reader = ELEM_TYPE_READERS[elemType]
+  const bytesPerElem = DATA_TYPE_BYTES[elemType]
+  if (!reader || !bytesPerElem || count === 0 || bytes.length < count * bytesPerElem) return null
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const values: number[] = []
+  for (let i = 0; i < count; i++) values.push(reader(view, i * bytesPerElem))
+  return values
+}
+
+// Scans one message's top-level fields for a single string field -- the same
+// shallow-scan shape onnxProtoWriter.ts's identifyAttr uses for ATTR_NAME.
+// Shared by subgraphExtractor.ts and onnxProtoWriter.ts rather than each
+// re-implementing it, since both need to pull TensorProto/ValueInfoProto
+// names out of raw bytes without decoding the whole message.
+export function readTopLevelStringField(bytes: Uint8Array, field: number): string {
+  const r = new ProtoReader(bytes)
+  let value = ''
+  while (!r.done) {
+    const tag = r.readTag()
+    if (!tag) break
+    if (tag.wire === WIRE_LEN) {
+      const len = r.readVarint()
+      if (tag.field === field) value = r.readString(len)
+      else r.skip(len)
+    } else {
+      r.skipField(tag.wire)
+    }
+  }
+  return value
+}
+
+export function parseInitializer(r: ProtoReader): ParsedInitializer {
   let name = ''
   let elemType = 1
   const dims: number[] = []
+  let rawData: Uint8Array | null = null
 
   while (!r.done) {
     const tag = r.readTag()
@@ -316,6 +375,9 @@ function parseInitializer(r: ProtoReader): ParsedInitializer {
         // Packed int64: a sequence of varints
         const sub = r.subReader(len)
         while (!sub.done) dims.push(sub.readVarint())
+      } else if (tag.field === INIT_RAW_DATA) {
+        rawData = r.buf.subarray(r.pos, r.pos + len)
+        r.skip(len)
       } else {
         r.skip(len)
       }
@@ -331,7 +393,10 @@ function parseInitializer(r: ProtoReader): ParsedInitializer {
   const elemCount = dims.length === 0 ? 0 : dims.reduce((a, b) => a * b, 1)
   const bytesPerElem = DATA_TYPE_BYTES[elemType] ?? 4
   const sizeMB = (elemCount * bytesPerElem) / (1024 * 1024)
-  return { name, dims, elemType, elemCount, sizeMB }
+  const values = rawData && elemCount > 0 && elemCount <= SMALL_TENSOR_MAX_ELEMENTS
+    ? (readRawDataValues(rawData, elemType, elemCount) ?? undefined)
+    : undefined
+  return { name, dims, elemType, elemCount, sizeMB, values }
 }
 
 function parseAttribute(r: ProtoReader): { name: string; value: string | number } {

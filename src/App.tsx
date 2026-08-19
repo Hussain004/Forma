@@ -11,10 +11,10 @@ import { useOnnxWorker } from './hooks/useOnnxWorker'
 import { isNpyBuffer, isNpzBuffer, parseNpy, parseNpz, type ParsedArray } from './lib/npyParser'
 import type { ValidationRunResult } from './lib/validationUtils'
 import type { ProvidedValidationInput } from './workers/onnxWorker'
-import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, validateRewire, rewireEdge, addCustomNode, structuralNodeIndex, buildGraphDiff, isConnectedSubgraph, CURATED_NODE_TYPES, type SelectableGraph } from './lib/graphUtils'
+import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, validateRewire, rewireEdge, addCustomNode, structuralNodeIndex, graphIOIndex, buildGraphDiff, isConnectedSubgraph, renameNode, renameTensor, setGraphIOType, replaceConstantValues, CURATED_NODE_TYPES, type SelectableGraph } from './lib/graphUtils'
 import type { HistoryEntry, StructuralHistoryEntry } from './lib/graphUtils'
 import { formatQuantizeEstimate } from './lib/quantize'
-import type { OnnxNode } from './lib/onnxTypes'
+import type { OnnxDim, OnnxNode } from './lib/onnxTypes'
 import type { QuantizeEstimate } from './hooks/useOnnxWorker'
 import type { StructuralOp } from './lib/onnxProtoWriter'
 import {
@@ -588,6 +588,40 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
   )
 }
 
+// Applies one structural edit to the live canvas graph. promoteOutput has no
+// live-graph effect (it doesn't change any node's wiring or the pseudo
+// Input/Output nodes) -- it's export-time only, tracked in history/changes
+// like every other edit, applied by the writer in toExportPayload's op.
+function applyStructuralEdit(g: SelectableGraph, op: GraphEdit): SelectableGraph {
+  switch (op.type) {
+    case 'delete': return deleteNodeWithReconnect(g, op.nodeId, op.keepInputPosition)
+    case 'insertPassthrough': return insertPassthroughNode(g, op.targetNodeId, op.inputPosition, op.newNodeId)
+    case 'rewire': return rewireEdge(g, op.sourceNodeId, op.targetNodeId, op.inputPosition)
+    case 'addNode': return addCustomNode(g, op.newNodeId, op.opType, op.inputCount, op.position)
+    case 'renameNode': return renameNode(g, op.nodeId, op.name)
+    case 'renameTensor': return renameTensor(g, op.oldName, op.newName)
+    case 'setGraphIO': return setGraphIOType(g, op.nodeId, op.elemType, op.dims)
+    case 'promoteOutput': return g
+    case 'replaceConstant': return replaceConstantValues(g, op.initializerName, op.values)
+  }
+}
+
+// Translates one live-graph edit (addressed by node id) into the writer's
+// index-addressed StructuralOp -- see toExportPayload, the sole caller.
+function toWriterOp(op: GraphEdit): StructuralOp {
+  switch (op.type) {
+    case 'delete': return { type: 'delete', nodeIndex: op.nodeIndex, keepInputPosition: op.keepInputPosition }
+    case 'insertPassthrough': return { type: 'insertPassthrough', targetNodeIndex: op.targetNodeIndex, inputPosition: op.inputPosition, newNodeName: op.newNodeId }
+    case 'rewire': return { type: 'rewire', targetNodeIndex: op.targetNodeIndex, inputPosition: op.inputPosition, sourceNodeIndex: op.sourceNodeIndex }
+    case 'addNode': return { type: 'addNode', newNodeIndex: op.newNodeIndex, opType: op.opType, inputCount: op.inputCount }
+    case 'renameNode': return { type: 'renameNode', nodeIndex: op.nodeIndex, name: op.name }
+    case 'renameTensor': return { type: 'renameTensor', oldName: op.oldName, newName: op.newName }
+    case 'setGraphIO': return { type: 'setGraphIO', ioKind: op.ioKind, ioIndex: op.ioIndex, elemType: op.elemType, dims: op.dims }
+    case 'promoteOutput': return { type: 'promoteOutput', tensorName: op.tensorName }
+    case 'replaceConstant': return { type: 'replaceConstant', initializerName: op.initializerName, values: op.values }
+  }
+}
+
 function App() {
   const { loadModel, runBenchmark, exportModel, exportModifiedModel, runValidation, extractSubgraph, graph, status, error, operationError, verifyResult, progress, benchmarkResult, quantizeEstimate } = useOnnxWorker()
   // TFLite support is read-only: no inference session ever exists for it (no TFLite
@@ -922,17 +956,7 @@ function App() {
 
   const graphWithStructuralEdits = useMemo((): SelectableGraph | null => {
     if (!graphWithOverrides || structuralOps.length === 0) return graphWithOverrides
-    return structuralOps.reduce<SelectableGraph>(
-      (g, op) =>
-        op.type === 'delete'
-          ? deleteNodeWithReconnect(g, op.nodeId, op.keepInputPosition)
-          : op.type === 'insertPassthrough'
-            ? insertPassthroughNode(g, op.targetNodeId, op.inputPosition, op.newNodeId)
-            : op.type === 'rewire'
-              ? rewireEdge(g, op.sourceNodeId, op.targetNodeId, op.inputPosition)
-              : addCustomNode(g, op.newNodeId, op.opType, op.inputCount, op.position),
-      graphWithOverrides,
-    )
+    return structuralOps.reduce<SelectableGraph>((g, op) => applyStructuralEdit(g, op), graphWithOverrides)
   }, [graphWithOverrides, structuralOps])
   structuralGraphRef.current = graphWithStructuralEdits
 
@@ -1174,6 +1198,59 @@ function App() {
     })
   }
 
+  // Cosmetic only -- see graphUtils.renameNode.
+  const handleRenameNode = (nodeId: string, name: string) => {
+    const nodeIndex = structuralNodeIndex(nodeId)
+    if (nodeIndex === null) return
+    appendHistoryEntry({ type: 'renameNode', nodeId, nodeIndex, name })
+  }
+
+  // No collision check against other tensor names -- ONNX itself doesn't
+  // require globally unique tensor names beyond "each producer is
+  // unambiguous", and this app's edge/wiring model addresses by name, so a
+  // clash would just make two things share an identity, the same failure
+  // mode as manually editing the same name into two exported nodes by hand.
+  const handleRenameTensor = (oldName: string, newName: string) => {
+    appendHistoryEntry({ type: 'renameTensor', oldName, newName })
+  }
+
+  const handleSetGraphIO = (nodeId: string, elemType: number, dims: OnnxDim[] | null) => {
+    const io = graphIOIndex(nodeId)
+    if (!io) return
+    appendHistoryEntry({ type: 'setGraphIO', nodeId, ioKind: io.ioKind, ioIndex: io.ioIndex, elemType, dims })
+  }
+
+  // promoteOutput has no live-graph effect (see applyStructuralEdit), so
+  // "already promoted" can't be read off graphWithStructuralEdits the way
+  // every other duplicate-op check in this file reads the live graph --
+  // it has to check the history itself for a prior promotion this session,
+  // in addition to the original model's own graph outputs.
+  const handlePromoteOutput = (tensorName: string) => {
+    if (!graphWithStructuralEdits) return
+    const wasOriginalOutput = selectableGraph?.nodes.some((n) => n.opType === 'Output' && n.inputs[0] === tensorName)
+    const alreadyPromoted = activeHistory.some((e) => e.type === 'promoteOutput' && e.tensorName === tensorName)
+    if (wasOriginalOutput || alreadyPromoted) {
+      announce(`${tensorName} is already a graph output`, 'reject')
+      return
+    }
+    appendHistoryEntry({ type: 'promoteOutput', tensorName })
+    announce(`Promoted ${tensorName} to a graph output (Ctrl+Z to undo)`)
+  }
+
+  // values.length must match the constant's current element count -- shape
+  // and dtype aren't editable this way (see SMALL_TENSOR_MAX_ELEMENTS).
+  const handleReplaceConstant = (initializerName: string, values: number[]) => {
+    if (!graphWithStructuralEdits) return
+    const owner = graphWithStructuralEdits.nodes.find((n) => n.inputs.includes(initializerName))
+    const position = owner ? owner.inputs.indexOf(initializerName) : -1
+    const expectedCount = position >= 0 ? owner?.inputMetadata?.[position]?.values?.length : undefined
+    if (expectedCount === undefined || values.length !== expectedCount || values.some((v) => !Number.isFinite(v))) {
+      announce(`${initializerName} needs exactly ${expectedCount ?? '?'} value(s)`, 'reject')
+      return
+    }
+    appendHistoryEntry({ type: 'replaceConstant', initializerName, values })
+  }
+
   // Fired by GraphCanvas when a drag-to-connect lands on a specific input handle.
   // validateRewire covers the self-connection/original-node/cycle checks; an
   // invalid drop is silently ignored, same convention as handleEdgeClick below.
@@ -1306,15 +1383,7 @@ function App() {
       if (nodeIndex === null) continue
       overridesByIndex.set(nodeIndex, overrides)
     }
-    const writerOps: StructuralOp[] = structuralOps.map(op =>
-      op.type === 'delete'
-        ? { type: 'delete', nodeIndex: op.nodeIndex, keepInputPosition: op.keepInputPosition }
-        : op.type === 'insertPassthrough'
-          ? { type: 'insertPassthrough', targetNodeIndex: op.targetNodeIndex, inputPosition: op.inputPosition, newNodeName: op.newNodeId }
-          : op.type === 'rewire'
-            ? { type: 'rewire', targetNodeIndex: op.targetNodeIndex, inputPosition: op.inputPosition, sourceNodeIndex: op.sourceNodeIndex }
-            : { type: 'addNode', newNodeIndex: op.newNodeIndex, opType: op.opType, inputCount: op.inputCount },
-    )
+    const writerOps: StructuralOp[] = structuralOps.map(toWriterOp)
     return { overridesByIndex, writerOps }
   }
 
@@ -1725,7 +1794,7 @@ function App() {
                       onJumpToState={handleHistoryJump}
                     />
                   ) : (
-                    <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onExtractRepro={isReadOnly ? undefined : handleExtractRepro} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} onCopy={() => announce('Copied to clipboard')} />
+                    <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onExtractRepro={isReadOnly ? undefined : handleExtractRepro} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} onCopy={() => announce('Copied to clipboard')} onRenameNode={isReadOnly ? undefined : handleRenameNode} onRenameTensor={isReadOnly ? undefined : handleRenameTensor} onSetGraphIO={isReadOnly ? undefined : handleSetGraphIO} onPromoteOutput={isReadOnly ? undefined : handlePromoteOutput} onReplaceConstant={isReadOnly ? undefined : handleReplaceConstant} />
                   )}
                 </div>
               </div>

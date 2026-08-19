@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-2.2.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-2.3.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -113,6 +113,15 @@ fingerprint before any edits are replayed.
 - Always extracts from the originally loaded model, not the current edit state, and always validates the result the same way Export Modified does: a real onnxruntime load, reported in the status line
 - Requires the selection to be a single connected piece and made up only of original model nodes; either violation is rejected before anything is sent to the worker
 
+### Deployment Surgery
+
+- Rename a node or any tensor (an ordinary intermediate value, a graph input/output, or an initializer) inline in the Layer Inspector; a tensor rename updates every node that references it, not just the one you clicked
+- Edit a graph input or output's declared element type and shape directly on its pseudo-node, including symbolic dimensions (e.g. a fixed batch size of 1 becoming a `batch` param) and dropping the shape entirely for a fully dynamic (unranked) declaration
+- Promote any intermediate tensor to an additional graph output with one click, for inspecting or comparing an internal activation without restructuring anything else
+- Small constants (a Reshape target shape, a scalar bias or threshold -- anything at or under 64 elements) are shown inline with their current values and editable the same way as an attribute; larger weight tensors are not, by design
+- All five edit types are full history citizens: undoable, redoable, diffable, and reflected in the change log, the same as every earlier structural edit
+- Not yet included in shareable edit links (v2.0's Share Edits) -- sharing an edit sequence containing one fails with a clear message rather than silently dropping it
+
 ### TFLite Support (Read-Only)
 
 - Format detected by the file's own identifier bytes, not just its extension, so drag-and-drop works correctly regardless of how the file is named
@@ -138,12 +147,13 @@ fingerprint before any edits are replayed.
 - Hand-written binary FlatBuffers parser for TFLite, independent of the protobuf parser -- a completely different wire format (table/vtable/offset-based rather than tag/varint-based), verified against the authoritative TFLite schema
 - Byte-preserving protobuf writer: patches only the fields that changed, leaving everything else (including large initializer tensors) untouched; structural edits (node delete/insert/rewire/add) use an array-based rewrite that preserves topological node order, re-sorting via DFS postorder when a rewire or a newly added node connects to something serialized later in the original file
 - Minimal-repro extraction reuses the writer's low-level protobuf primitives to build a fresh GraphProto (only the selected nodes, their required initializers, and synthesized or reused ValueInfoProto for promoted boundary tensors) while everything outside GraphProto still passes through byte-for-byte
+- The writer's structural-edit path decodes GraphProto into four addressable pools (nodes, initializers, graph inputs, graph outputs) rather than nodes alone, so deployment-surgery ops (rename, retype, promote, replace) can rewrite any of them; everything else (value_info, doc_string, ...) still passes through untouched
 - Both parsers build the same graph representation through a shared generic layer, so the graph canvas and inspector need no format-specific code
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
 - Compact, versioned share-link codec with strict URL validation and browser-native SHA-256 verification
 - Hand-written `.npy`/`.npz` reader (no zip library dependency): a minimal central-directory ZIP walk plus the browser's native `DecompressionStream` for DEFLATE entries
-- 332 tests across 23 files; zero TypeScript errors on strict mode
+- 359 tests across 24 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -289,6 +299,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 2.3.0 | Deployment surgery: rename nodes and tensors, edit graph I/O names/shapes/symbolic dims/data types, promote intermediate outputs, inspect and replace small constants |
 | 2.2.0 | Minimal reproductions: extract a selected connected subgraph as a standalone, validated ONNX file with boundary tensors promoted to graph I/O |
 | 2.1.0 | Behavioral validation: run the original and edited model against identical `.npy`/`.npz` or generated inputs and compare outputs |
 | 2.0.0 | Shareable URL-hash edit sequences with SHA-256 original-model verification and automatic history replay |

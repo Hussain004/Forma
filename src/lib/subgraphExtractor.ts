@@ -26,16 +26,13 @@ import {
   GRAPH_VALUE_INFO,
   INIT_NAME,
   VINFO_NAME,
-  VINFO_TYPE,
-  TYPE_TENSOR,
-  TENSOR_ELEM_TYPE,
+  readTopLevelStringField,
 } from './onnxProtoParser'
 import {
   patchLenFields,
   decodeNodeIO,
   encodeLenField,
-  encodeStringField,
-  encodeVarintField,
+  encodeValueInfo,
   concatBytes,
 } from './onnxProtoWriter'
 
@@ -44,36 +41,14 @@ export class SubgraphExtractionError extends Error {}
 interface RawEntry { name: string; bytes: Uint8Array }
 interface RawNode { origIndex: number; bytes: Uint8Array; inputs: string[]; outputs: string[] }
 
-// Scans one message's top-level fields for a single string field, the same
-// shallow-scan shape onnxProtoWriter.ts's identifyAttr uses for ATTR_NAME --
-// here for TensorProto's name (field 8) and ValueInfoProto's name (field 1).
-function readTopLevelName(bytes: Uint8Array, nameField: number): string {
-  const r = new ProtoReader(bytes)
-  let name = ''
-  while (!r.done) {
-    const tag = r.readTag()
-    if (!tag) break
-    if (tag.wire === WIRE_LEN) {
-      const len = r.readVarint()
-      if (tag.field === nameField) name = r.readString(len)
-      else r.skip(len)
-    } else {
-      r.skipField(tag.wire)
-    }
-  }
-  return name
-}
-
 // Fallback for a boundary tensor with no existing ValueInfoProto to reuse:
 // name plus a bare elem_type, shape omitted entirely (unranked, not
 // zero-rank -- an empty TensorShapeProto would mean "scalar", which is wrong
 // here). Defaults to FLOAT (1), the same default this codebase uses
 // elsewhere (onnxWorker's benchmark/validation tensor construction) when a
 // tensor's real dtype isn't known.
-function encodeUnrankedValueInfo(name: string, elemType = 1): Uint8Array {
-  const tensorType = encodeVarintField(TENSOR_ELEM_TYPE, elemType)
-  const typeProto = encodeLenField(TYPE_TENSOR, tensorType)
-  return concatBytes([encodeStringField(VINFO_NAME, name), encodeLenField(VINFO_TYPE, typeProto)])
+function encodeUnrankedValueInfo(name: string): Uint8Array {
+  return encodeValueInfo(name, 1, null)
 }
 
 export function extractSubgraph(buffer: ArrayBuffer, selectedIndices: Set<number>): ArrayBuffer {
@@ -101,9 +76,9 @@ export function extractSubgraph(buffer: ArrayBuffer, selectedIndices: Set<number
           allNodes.push({ origIndex: nodeOccurrence, bytes: sub, ...decodeNodeIO(sub) })
           nodeOccurrence++
         } else if (tag.field === GRAPH_INIT) {
-          initializers.push({ name: readTopLevelName(sub, INIT_NAME), bytes: sub })
+          initializers.push({ name: readTopLevelStringField(sub, INIT_NAME), bytes: sub })
         } else if (tag.field === GRAPH_INPUT || tag.field === GRAPH_OUTPUT || tag.field === GRAPH_VALUE_INFO) {
-          const name = readTopLevelName(sub, VINFO_NAME)
+          const name = readTopLevelStringField(sub, VINFO_NAME)
           if (name) knownValueInfo.set(name, sub)
         }
       } else {

@@ -127,6 +127,17 @@ button.attr-value-button:focus-visible {
   outline-offset: 1px;
   border-radius: 1px;
 }
+/* Every inline-editable field in the Layer Inspector (attributes, node/tensor
+   rename, graph I/O type/shape, constant values) shares this button -- one
+   hover rule instead of the per-field JS hover-state tracking it replaced.
+   The pencil icon's fill is a plain SVG presentation attribute, which CSS
+   overrides without !important. */
+button.attr-value-button:hover {
+  background: rgba(255, 176, 0, 0.04);
+}
+button.attr-value-button:hover svg polygon {
+  fill: var(--color-amber);
+}
 
 /* React Flow control overrides live in styles/theme.css -- this file used to
    carry a second, overlapping block for the same selectors, but theme.css's

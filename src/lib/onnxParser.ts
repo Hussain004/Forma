@@ -39,6 +39,7 @@ export function buildGraphFromParsed(proto: ParsedGraph, modelName: string, form
     tensorMetadata.set(init.name, {
       shape: init.dims.map((value) => ({ value })),
       elemType: init.elemType > 0 ? init.elemType : undefined,
+      values: init.values,
     })
   }
 

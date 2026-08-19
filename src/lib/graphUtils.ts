@@ -59,11 +59,59 @@ export interface AddNodeHistoryEntry {
   position: { x: number; y: number }
 }
 
+export interface RenameNodeHistoryEntry {
+  type: 'renameNode'
+  nodeId: string
+  nodeIndex: number
+  name: string
+}
+
+// Global: a tensor name can appear as an input on several nodes (and as an
+// output on exactly one), plus possibly as a graph input/output or an
+// initializer name -- renaming touches every occurrence, so this isn't
+// addressed to one node the way the other entries are.
+export interface RenameTensorHistoryEntry {
+  type: 'renameTensor'
+  oldName: string
+  newName: string
+}
+
+// Addresses the Input_N/Output_N pseudo-node the way structuralNodeIndex
+// addresses a real one -- see graphIOIndex below. dims: null means unranked
+// (the shape is omitted entirely, not encoded as an empty/scalar shape).
+export interface SetGraphIOHistoryEntry {
+  type: 'setGraphIO'
+  nodeId: string
+  ioKind: 'input' | 'output'
+  ioIndex: number
+  elemType: number
+  dims: OnnxDim[] | null
+}
+
+export interface PromoteOutputHistoryEntry {
+  type: 'promoteOutput'
+  tensorName: string
+}
+
+// values.length must equal the initializer's current element count -- shape
+// and dtype are not editable this way, only the values (see
+// SMALL_TENSOR_MAX_ELEMENTS in onnxProtoParser.ts for what's inspectable at all).
+export interface ReplaceConstantHistoryEntry {
+  type: 'replaceConstant'
+  initializerName: string
+  values: number[]
+}
+
 export type StructuralHistoryEntry =
   | DeleteHistoryEntry
   | InsertPassthroughHistoryEntry
   | RewireHistoryEntry
   | AddNodeHistoryEntry
+  | RenameNodeHistoryEntry
+  | RenameTensorHistoryEntry
+  | SetGraphIOHistoryEntry
+  | PromoteOutputHistoryEntry
+  | ReplaceConstantHistoryEntry
 
 // The history log is the sole source of truth for model edits. Its entries
 // preserve the live node ids needed by the canvas alongside the stable indexes
@@ -80,7 +128,18 @@ export function friendlyNodeLabel(nodeId: string): string {
   if (custom) return `Custom node ${custom[1]}`
   const passthrough = /^passthrough_(\d+)$/.exec(nodeId)
   if (passthrough) return `Passthrough ${passthrough[1]}`
+  const io = /^(input|output)_(\d+)$/.exec(nodeId)
+  if (io) return `Graph ${io[1]} ${io[2]}`
   return 'Node'
+}
+
+// Mirrors structuralNodeIndex for the Input_N/Output_N pseudo-nodes, which
+// address a position in GraphProto.input/output rather than GraphProto.node
+// and so aren't covered by that scheme at all.
+export function graphIOIndex(nodeId: string): { ioKind: 'input' | 'output'; ioIndex: number } | null {
+  const match = /^(input|output)_(\d+)$/.exec(nodeId)
+  if (!match) return null
+  return { ioKind: match[1] as 'input' | 'output', ioIndex: Number(match[2]) }
 }
 
 function formatHistoryValue(value: string | number): string {
@@ -101,6 +160,16 @@ export function describeHistoryEntry(entry: HistoryEntry): string {
       return `Rewired ${friendlyNodeLabel(entry.targetNodeId)} input ${entry.inputPosition + 1} to ${friendlyNodeLabel(entry.sourceNodeId)}`
     case 'addNode':
       return `Added ${entry.opType} node`
+    case 'renameNode':
+      return `Renamed ${friendlyNodeLabel(entry.nodeId)} to "${entry.name}"`
+    case 'renameTensor':
+      return `Renamed tensor ${entry.oldName} to ${entry.newName}`
+    case 'setGraphIO':
+      return `Changed ${friendlyNodeLabel(entry.nodeId)} type/shape`
+    case 'promoteOutput':
+      return `Promoted ${entry.tensorName} to a graph output`
+    case 'replaceConstant':
+      return `Replaced ${entry.initializerName} with [${entry.values.join(', ')}]`
   }
 
 }
@@ -500,6 +569,59 @@ export function addCustomNode(
     position,
   }
   return { ...graph, nodes: [...graph.nodes, newNode] }
+}
+
+// Cosmetic only -- NodeProto.name doesn't participate in wiring, so this never
+// touches edges or other nodes.
+export function renameNode(graph: SelectableGraph, nodeId: string, name: string): SelectableGraph {
+  return { ...graph, nodes: graph.nodes.map((n) => (n.id === nodeId ? { ...n, name } : n)) }
+}
+
+// Global rename: every node's matching input/output entries, and every edge
+// labeled with the old name, whether the tensor is an ordinary intermediate
+// value, a graph input/output, or an initializer.
+export function renameTensor(graph: SelectableGraph, oldName: string, newName: string): SelectableGraph {
+  if (!oldName || !newName || oldName === newName) return graph
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) => ({
+      ...n,
+      inputs: n.inputs.map((t) => (t === oldName ? newName : t)),
+      outputs: n.outputs.map((t) => (t === oldName ? newName : t)),
+    })),
+    edges: graph.edges.map((e) => (e.label === oldName ? { ...e, label: newName } : e)),
+  }
+}
+
+// Updates the declared type/shape shown on an Input_N/Output_N pseudo-node
+// (see graphIOIndex) -- the writer applies the equivalent change to the real
+// GraphProto.input/output ValueInfoProto at export time.
+export function setGraphIOType(graph: SelectableGraph, nodeId: string, elemType: number, dims: OnnxDim[] | null): SelectableGraph {
+  const metadata: TensorMetadata = { elemType, shape: dims ?? undefined }
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) => {
+      if (n.id !== nodeId) return n
+      if (n.opType === 'Input') return { ...n, outputShapes: dims ? [dims] : undefined, outputMetadata: [metadata] }
+      if (n.opType === 'Output') return { ...n, inputShapes: dims ? [dims] : undefined, inputMetadata: [metadata] }
+      return n
+    }),
+  }
+}
+
+// Updates the inspectable values on every node that references this
+// initializer (ordinarily just one) -- see SMALL_TENSOR_MAX_ELEMENTS.
+export function replaceConstantValues(graph: SelectableGraph, initializerName: string, values: number[]): SelectableGraph {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) => {
+      const position = n.inputs.indexOf(initializerName)
+      if (position === -1 || !n.inputMetadata) return n
+      const nextMetadata = [...n.inputMetadata]
+      nextMetadata[position] = { ...nextMetadata[position], values }
+      return { ...n, inputMetadata: nextMetadata }
+    }),
+  }
 }
 
 export interface RewireValidation {
