@@ -11,9 +11,10 @@ interface LandingPageProps {
   progressLabel?: string | null
   progressPercent?: number | null
   shareRequest?: SharedModelRequest | null
+  onCompareMode?: () => void
 }
 
-export function LandingPage({ onModelLoaded, status, error, progressLabel, progressPercent, shareRequest }: LandingPageProps) {
+export function LandingPage({ onModelLoaded, status, error, progressLabel, progressPercent, shareRequest, onCompareMode }: LandingPageProps) {
   return (
     <div className="landing-root">
       <NeuralNetworkCanvas />
@@ -28,6 +29,7 @@ export function LandingPage({ onModelLoaded, status, error, progressLabel, progr
           progressLabel={progressLabel}
           progressPercent={progressPercent}
           shareRequest={shareRequest}
+          onCompareMode={onCompareMode}
         />
         <FeatureGrid />
       </main>

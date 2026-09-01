@@ -29,6 +29,7 @@ type WorkerCommand =
       }
     }
   | { type: 'EXTRACT_SUBGRAPH'; payload: { selectedIndices: number[] } }
+  | { type: 'RUN_GENERATED' }
 
 type WorkerResponse =
   | { type: 'MODEL_LOADED'; payload: OnnxGraph }
@@ -38,6 +39,10 @@ type WorkerResponse =
   | { type: 'EXPORT_RESULT'; payload: ArrayBuffer }
   | { type: 'VERIFY_RESULT'; payload: { valid: boolean; message?: string } }
   | { type: 'VALIDATION_RESULT'; payload: ValidationRunResult }
+  // Single-sided version of VALIDATE's runValidationSide, used by model
+  // comparison (v2.5), which needs one model's outputs on generated inputs,
+  // not an original-vs-modified pair of the SAME model.
+  | { type: 'GENERATED_RESULT'; payload: SideRunResult }
   // scope distinguishes a failed LOAD_MODEL (nothing usable exists yet, the
   // dropzone/error screen is the right response) from a failed operation on an
   // already-loaded model (benchmark/inference/export) -- the loaded graph and
@@ -281,6 +286,12 @@ ctx.onmessage = async (event: MessageEvent<WorkerCommand>) => {
         modified,
       }
       ctx.postMessage({ type: 'VALIDATION_RESULT', payload: result })
+    } else if (cmd.type === 'RUN_GENERATED') {
+      if (!exportBuffer) throw new Error('No model loaded')
+      if (isTfliteLoaded) throw new Error('Inference is only available for ONNX models')
+      const feeds = buildValidationFeeds(null)
+      const result = await runValidationSide(exportBuffer.slice(0), feeds)
+      ctx.postMessage({ type: 'GENERATED_RESULT', payload: result })
     } else if (cmd.type === 'EXTRACT_SUBGRAPH') {
       if (!exportBuffer) throw new Error('No model loaded')
       if (isTfliteLoaded) throw new Error('Minimal repro extraction is only available for ONNX models')
