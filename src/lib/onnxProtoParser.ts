@@ -36,11 +36,21 @@ export const NODE_NAME = 3
 export const NODE_OP_TYPE = 4
 export const NODE_ATTR = 5
 
-// AttributeProto fields
+// AttributeProto fields. Pre-v2.4, ATTR_F and ATTR_S held the wrong field
+// numbers (4 and 6) -- verified against onnx.proto and confirmed by hand-
+// decoding a real model's raw bytes (BatchNormalization's `epsilon`, a FLOAT
+// attribute, is tagged field 2 wire 5 in the actual file, not field 4). The
+// practical effect: every FLOAT or STRING attribute in every model ever
+// loaded silently failed to parse (both branches fell through to the
+// "unknown field, skip" case) rather than erroring, so nothing ever
+// surfaced it -- until v2.4 needed to WRITE a fresh STRING attribute
+// (Resize's `mode`) and the wrong field number produced bytes onnxruntime's
+// strict protobuf decoder rejects outright, since real field 6 is TYPED as
+// a GraphProto submessage there, not a string.
 export const ATTR_NAME = 1
+export const ATTR_F = 2    // float32 scalar
 export const ATTR_I = 3    // int64 scalar
-export const ATTR_F = 4    // float32 scalar
-export const ATTR_S = 6    // string (bytes)
+export const ATTR_S = 4    // string (bytes)
 export const ATTR_FLOATS = 7  // packed repeated float32
 export const ATTR_INTS = 8    // packed repeated int64
 export const ATTR_TYPE = 20   // AttributeType enum (validated by strict parsers)
@@ -284,7 +294,7 @@ function parseTypeProto(r: ProtoReader): { elemType: number; shape?: OnnxDim[] }
   return null
 }
 
-function parseValueInfo(r: ProtoReader): ParsedValueInfo {
+export function parseValueInfo(r: ProtoReader): ParsedValueInfo {
   let name = ''
   let shape: OnnxDim[] | undefined
   let elemType: number | undefined

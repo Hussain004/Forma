@@ -30,6 +30,8 @@ import {
   ATTR_INTS,
   ATTR_FLOATS,
   ATTR_TYPE,
+  INIT_DIMS,
+  INIT_DATA_TYPE,
   INIT_NAME,
   INIT_RAW_DATA,
   VINFO_NAME,
@@ -43,6 +45,7 @@ import {
   DATA_TYPE_BYTES,
   readTopLevelStringField,
   parseInitializer,
+  parseValueInfo,
   type OnnxDim,
 } from './onnxProtoParser'
 
@@ -71,6 +74,25 @@ export type StructuralOp =
   // values.length must equal the initializer's current element count -- see
   // SMALL_TENSOR_MAX_ELEMENTS in onnxProtoParser.ts.
   | { type: 'replaceConstant'; initializerName: string; values: number[] }
+  // v2.4 guided recipe insertion (see pipelineRecipes.ts and graphUtils.ts's
+  // insertRecipeNode, which this mirrors byte-for-byte). newNodeIndex mints
+  // this entry's origIndex the same way addNode's does (origIndex = -newNodeIndex),
+  // which is what makes a recipe node addressable by later ops (attr edits,
+  // rename, delete) for free -- see applyStructuralOps below. anchorTensor is
+  // only consulted for an 'input' anchor; an 'output' anchor re-derives its
+  // target fresh from graphOutputs[ioIndex], which never changes across edits.
+  | {
+      type: 'insertRecipe'
+      anchorKind: 'input' | 'output'
+      ioIndex: number
+      anchorTensor: string
+      newNodeIndex: number
+      opType: string
+      attrs: { name: string; kind: 'I' | 'F' | 'S' | 'INTS' | 'FLOATS'; value: string | number }[]
+      extraInputs: { kind: 'empty' | 'const'; elemType?: number; dims?: number[]; values?: number[] }[]
+      extraOutputCount: number
+      extraOutputElemTypes: number[]
+    }
 
 type AttrKind = 'I' | 'F' | 'S' | 'INTS' | 'FLOATS' | 'OTHER'
 
@@ -297,6 +319,33 @@ function buildCustomNodeBytes(opType: string, inputCount: number, outputTensor: 
   parts.push(encodeStringField(NODE_OUTPUT, outputTensor))
   parts.push(encodeStringField(NODE_NAME, name))
   parts.push(encodeStringField(NODE_OP_TYPE, opType))
+  return concatBytes(parts)
+}
+
+// A recipe node (v2.4) always has real, caller-specified inputs/outputs and
+// initial attributes -- unlike buildCustomNodeBytes's empty-placeholder,
+// attribute-free nodes, everything here is baked in up front. attrBytes are
+// already-encoded NODE_ATTR occurrences (see buildEditedAttrContent, reused
+// as-is since a fresh attribute and a patched one are the same bytes).
+function buildRecipeNodeBytes(opType: string, inputs: string[], outputs: string[], name: string, attrBytes: Uint8Array[]): Uint8Array {
+  const parts: Uint8Array[] = []
+  for (const inp of inputs) parts.push(encodeStringField(NODE_INPUT, inp))
+  for (const out of outputs) parts.push(encodeStringField(NODE_OUTPUT, out))
+  parts.push(encodeStringField(NODE_NAME, name))
+  parts.push(encodeStringField(NODE_OP_TYPE, opType))
+  parts.push(...attrBytes)
+  return concatBytes(parts)
+}
+
+// A small new TensorProto for one of a recipe's constant extra inputs (e.g.
+// Resize's scales, TopK's K) -- dims are unpacked int64 varints, matching
+// onnxProtoParser's own read of INIT_DIMS (see its "unpacked (proto2 compat)"
+// comment).
+function buildInitializerBytes(name: string, elemType: number, dims: number[], values: number[]): Uint8Array {
+  const parts = dims.map((d) => encodeInt64Field(INIT_DIMS, d))
+  parts.push(encodeVarintField(INIT_DATA_TYPE, elemType))
+  parts.push(encodeStringField(INIT_NAME, name))
+  parts.push(encodeLenField(INIT_RAW_DATA, encodeRawData(elemType, values)))
   return concatBytes(parts)
 }
 
@@ -539,6 +588,56 @@ function applyStructuralOps(decoded: DecodedGraph, structuralOps: StructuralOp[]
       // on it, it depends on nothing), but a later rewire in the same batch can make
       // an earlier-positioned node consume its output, which does need the sort.
       needsTopoSort = true
+    } else if (op.type === 'insertRecipe') {
+      const origIndex = -op.newNodeIndex
+      const name = `recipe_${op.newNodeIndex}`
+      const attrBytes = op.attrs.map((a) => encodeLenField(NODE_ATTR, buildEditedAttrContent(a.name, a.kind, a.value)))
+      const extraInputNames = op.extraInputs.map((slot, i) => {
+        if (slot.kind === 'empty') return ''
+        const constName = `${name}_const${i}`
+        initializers = [...initializers, { name: constName, bytes: buildInitializerBytes(constName, slot.elemType ?? 1, slot.dims ?? [], slot.values ?? []) }]
+        return constName
+      })
+
+      if (op.anchorKind === 'input') {
+        const tensorName = op.anchorTensor
+        if (!tensorName) continue
+        const newTensorName = `${name}_out`
+        entries = entries.map((e) => (
+          e.inputs.includes(tensorName) ? decodeEntry(e.origIndex, rewireInputsByValue(e.bytes, tensorName, newTensorName)) : e
+        ))
+        const newEntry = decodeEntry(origIndex, buildRecipeNodeBytes(op.opType, [tensorName, ...extraInputNames], [newTensorName], name, attrBytes))
+        // Splice immediately after whatever currently produces tensorName (a
+        // prior chained recipe), or prepend if nothing does (a raw graph
+        // input has no producer entry at all) -- same ordering rationale as
+        // insertPassthrough's "splice before its consumer", mirrored for a
+        // node spliced after its producer instead.
+        const producerIdx = entries.findIndex((e) => e.outputs.includes(tensorName))
+        entries = producerIdx === -1
+          ? [newEntry, ...entries]
+          : [...entries.slice(0, producerIdx + 1), newEntry, ...entries.slice(producerIdx + 1)]
+      } else {
+        const anchor = graphOutputs[op.ioIndex]
+        if (!anchor) continue
+        const publicName = anchor.name
+        const internalName = `${name}_in`
+        entries = entries.map((e) => decodeEntry(e.origIndex, renameOutputsByValue(rewireInputsByValue(e.bytes, publicName, internalName), publicName, internalName)))
+        const extraOutputNames = Array.from({ length: op.extraOutputCount }, (_, i) => `${name}_extra${i}`)
+        const newEntry = decodeEntry(origIndex, buildRecipeNodeBytes(op.opType, [internalName, ...extraInputNames], [publicName, ...extraOutputNames], name, attrBytes))
+        entries = [...entries, newEntry] // its only input is the just-renamed producer, always already earlier
+        // The op that used to declare publicName's shape (e.g. [N, 1000]) is
+        // gone from this position -- a recipe like Top-K genuinely produces a
+        // different shape (top-K along an axis), so the stale declaration
+        // would conflict with onnxruntime's own shape inference and fail
+        // session creation. Re-declare unranked (dtype preserved, shape
+        // dropped) rather than leave a declaration nothing still backs.
+        const knownElemType = parseValueInfo(new ProtoReader(anchor.bytes)).elemType ?? 1
+        graphOutputs = graphOutputs.map((o, i) => (i === op.ioIndex ? { name: publicName, bytes: encodeValueInfo(publicName, knownElemType, null) } : o))
+        if (extraOutputNames.length > 0) {
+          graphOutputs = [...graphOutputs, ...extraOutputNames.map((n, i) => ({ name: n, bytes: encodeValueInfo(n, op.extraOutputElemTypes[i] ?? 1, null) }))]
+        }
+      }
+      needsTopoSort = true
     }
   }
 
@@ -584,15 +683,7 @@ function rewriteGraphContent(
       const fieldEnd = r.pos
       const sub = graphContent.subarray(subStart, fieldEnd)
       if (tag.field === GRAPH_NODE) {
-        const overrides = overridesByNodeIndex.get(nodeOccurrence)
-        const patchedBytes = overrides
-          ? patchLenFields(sub, NODE_ATTR, (_attrIdx, attrContent) => {
-              const { name, kind } = identifyAttr(attrContent)
-              if (kind === 'OTHER' || !(name in overrides)) return null
-              return buildEditedAttrContent(name, kind, overrides[name])
-            })
-          : sub
-        nodes.push(decodeEntry(nodeOccurrence, patchedBytes))
+        nodes.push(decodeEntry(nodeOccurrence, sub))
         nodeOccurrence++
       } else if (tag.field === GRAPH_INIT) {
         initializers.push({ name: readTopLevelStringField(sub, INIT_NAME), bytes: sub })
@@ -615,8 +706,23 @@ function rewriteGraphContent(
   }
 
   const result = applyStructuralOps({ nodes, initializers, graphInputs, graphOutputs, valueInfo, otherChunks }, structuralOps)
+  // Attribute overrides are applied to the FINAL node set, keyed by origIndex
+  // rather than during the initial GRAPH_NODE pass above -- origIndex is
+  // stable across structural edits (delete/rewire/rename never renumber
+  // survivors), and applying it here, after entries created by addNode or
+  // insertRecipe already exist, is what makes a custom or recipe node's
+  // attributes editable at export time at all, not just on the live canvas.
+  const patchedNodes = result.nodes.map((entry) => {
+    const overrides = overridesByNodeIndex.get(entry.origIndex)
+    if (!overrides) return entry
+    return decodeEntry(entry.origIndex, patchLenFields(entry.bytes, NODE_ATTR, (_attrIdx, attrContent) => {
+      const { name, kind } = identifyAttr(attrContent)
+      if (kind === 'OTHER' || !(name in overrides)) return null
+      return buildEditedAttrContent(name, kind, overrides[name])
+    }))
+  })
   return concatBytes([
-    ...result.nodes.map((e) => encodeLenField(GRAPH_NODE, e.bytes)),
+    ...patchedNodes.map((e) => encodeLenField(GRAPH_NODE, e.bytes)),
     ...result.initializers.map((i) => encodeLenField(GRAPH_INIT, i.bytes)),
     ...result.graphInputs.map((i) => encodeLenField(GRAPH_INPUT, i.bytes)),
     ...result.graphOutputs.map((o) => encodeLenField(GRAPH_OUTPUT, o.bytes)),
