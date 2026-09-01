@@ -45,11 +45,11 @@ function intAttr(name: string, value: number): number[] {
 }
 
 function floatAttr(name: string, value: number): number[] {
-  return [...strField(1, name), ...float32Field(4, value), ...varintField(20, 1)]
+  return [...strField(1, name), ...float32Field(2, value), ...varintField(20, 1)]
 }
 
 function stringAttr(name: string, value: string): number[] {
-  return [...strField(1, name), ...strField(6, value), ...varintField(20, 3)]
+  return [...strField(1, name), ...strField(4, value), ...varintField(20, 3)]
 }
 
 function intsAttr(name: string, values: number[]): number[] {

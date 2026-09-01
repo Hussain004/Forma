@@ -3,6 +3,7 @@ import type { OnnxDim, OnnxNode, ModelMetadata } from '../lib/onnxTypes'
 import { formatShape } from '../lib/onnxProtoParser'
 import { opCategoryColor, type DeleteEligibility } from '../lib/graphUtils'
 import { parseAttrEdit } from '../lib/attrUtils'
+import { PIPELINE_RECIPES, type PipelineRecipe } from '../lib/pipelineRecipes'
 
 // Bare comma list ("1, 3, 8, 8"), not formatShape's bracketed display form --
 // this one has to round-trip through parseShapeEdit below. A purely numeric
@@ -57,6 +58,7 @@ interface LayerInspectorProps {
   onSetGraphIO?: (nodeId: string, elemType: number, dims: OnnxDim[] | null) => void
   onPromoteOutput?: (tensorName: string) => void
   onReplaceConstant?: (initializerName: string, values: number[]) => void
+  onInsertRecipe?: (recipe: PipelineRecipe) => void
 }
 
 const bulkButtonStyle: React.CSSProperties = {
@@ -232,7 +234,7 @@ function sensitivityColor(params: number): string {
   return '#52C57A'
 }
 
-export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onBulkDelete, onExtractRepro, onAttrEdit, onDeleteNode, deleteEligibility, onCopy, onRenameNode, onRenameTensor, onSetGraphIO, onPromoteOutput, onReplaceConstant }: LayerInspectorProps) {
+export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelStats, multiSelection, onBulkExclude, onBulkInclude, onBulkDelete, onExtractRepro, onAttrEdit, onDeleteNode, deleteEligibility, onCopy, onRenameNode, onRenameTensor, onSetGraphIO, onPromoteOutput, onReplaceConstant, onInsertRecipe }: LayerInspectorProps) {
   // One editingField/editValue pair drives every inline-editable field on this
   // panel (attributes, node name, tensor names, graph I/O type/shape, constant
   // values) -- fieldKey (see commitEditField) says which. Only one can be open
@@ -620,6 +622,30 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
               testIdPrefix="io"
               title="Edit the declared shape"
             />
+          </div>
+        </>
+      )}
+
+      {!isCompute && onInsertRecipe && (
+        <>
+          {sectionHeader(node.opType === 'Input' ? 'Preprocessing Recipes' : 'Postprocessing Recipes')}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {PIPELINE_RECIPES.filter((r) =>
+              r.category === (node.opType === 'Input' ? 'preprocess' : 'postprocess') &&
+              (!r.minOpset || (modelStats?.metadata?.opsetVersion ?? Infinity) >= r.minOpset),
+            ).map((recipe) => (
+              <button
+                key={recipe.id}
+                type="button"
+                data-testid={`insert-recipe-${recipe.id}`}
+                onClick={() => onInsertRecipe(recipe)}
+                title={recipe.description}
+                className="btn-ghost"
+                style={{ textAlign: 'left', fontSize: 11, padding: '4px 8px' }}
+              >
+                {recipe.label}
+              </button>
+            ))}
           </div>
         </>
       )}

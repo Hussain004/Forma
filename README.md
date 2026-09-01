@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-2.3.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-2.4.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -122,6 +122,16 @@ fingerprint before any edits are replayed.
 - All five edit types are full history citizens: undoable, redoable, diffable, and reflected in the change log, the same as every earlier structural edit
 - Not yet included in shareable edit links (v2.0's Share Edits) -- sharing an edit sequence containing one fails with a clear message rather than silently dropping it
 
+### Pipeline Recipes
+
+- A curated menu of common preprocessing recipes (Cast, Resize, Transpose, L2 Normalize) on any graph Input pseudo-node, and postprocessing recipes (Softmax, Sigmoid, Top-K, Transpose) on any graph Output pseudo-node -- one click inserts a fully wired node with sensible default attributes, ready to fine-tune like any other node
+- Preprocessing recipes rewire every current consumer of the graph input (including fan-out to multiple nodes) to the new node's output, while the graph input's own declared name and type stay exactly as external callers expect
+- Postprocessing recipes keep the graph output's declared name on the new node's output and rename whatever used to produce it to an internal tensor, so the public contract never moves
+- Recipes chain: inserting a second recipe on the same boundary attaches after the first instead of both racing to intercept the same tensor, on both the live canvas and export
+- Top-K adapts to the loaded model's own declared opset -- the modern two-input (data, K) encoding for opset 10+, the legacy `k`-as-attribute encoding below it -- since onnxruntime resolves op schemas against the model's own opset declaration, not a fixed one. Resize has no such fallback (it didn't exist before opset 10), so it's hidden entirely on an older model rather than failing at export
+- A recipe that reduces or reshapes its output (Top-K, and any future one like it) drops the now-stale declared shape on the graph output it feeds rather than leaving a declaration onnxruntime's own shape inference would reject; dtype is preserved
+- Detection postprocessing (NonMaxSuppression) is deliberately out of scope: it needs two pre-existing internal tensors (boxes and scores) as inputs, not one boundary tensor, so it doesn't fit this insert-at-a-boundary model
+
 ### TFLite Support (Read-Only)
 
 - Format detected by the file's own identifier bytes, not just its extension, so drag-and-drop works correctly regardless of how the file is named
@@ -147,13 +157,15 @@ fingerprint before any edits are replayed.
 - Hand-written binary FlatBuffers parser for TFLite, independent of the protobuf parser -- a completely different wire format (table/vtable/offset-based rather than tag/varint-based), verified against the authoritative TFLite schema
 - Byte-preserving protobuf writer: patches only the fields that changed, leaving everything else (including large initializer tensors) untouched; structural edits (node delete/insert/rewire/add) use an array-based rewrite that preserves topological node order, re-sorting via DFS postorder when a rewire or a newly added node connects to something serialized later in the original file
 - Minimal-repro extraction reuses the writer's low-level protobuf primitives to build a fresh GraphProto (only the selected nodes, their required initializers, and synthesized or reused ValueInfoProto for promoted boundary tensors) while everything outside GraphProto still passes through byte-for-byte
-- The writer's structural-edit path decodes GraphProto into four addressable pools (nodes, initializers, graph inputs, graph outputs) rather than nodes alone, so deployment-surgery ops (rename, retype, promote, replace) can rewrite any of them; everything else (value_info, doc_string, ...) still passes through untouched
+- The writer's structural-edit path decodes GraphProto into four addressable pools (nodes, initializers, graph inputs, graph outputs) rather than nodes alone, so deployment-surgery and pipeline-recipe ops (rename, retype, promote, replace, insert-recipe) can rewrite any of them; everything else (value_info, doc_string, ...) still passes through untouched
+- A pipeline-recipe node reuses the same addressable-node scheme as a custom-added one (a shared counter mints its negative `origIndex`), so it can be further attribute-edited, renamed, or deleted with no writer code beyond what custom nodes already needed; attribute overrides are now applied to the writer's final node set (after structural edits run, not before), which is what makes editing a freshly inserted node's attributes actually reach the export, not just the live canvas
+- Fixed a pre-v2.4 bug in the AttributeProto field numbers for FLOAT and STRING attributes (`f`/`s`, not the `4`/`6` this parser used): every float or string attribute in every model ever loaded silently failed to parse rather than erroring, so nothing surfaced it until v2.4 needed to *write* a fresh string attribute (Resize's `mode`) and the wrong field number produced bytes onnxruntime's strict protobuf decoder rejected outright
 - Both parsers build the same graph representation through a shared generic layer, so the graph canvas and inspector need no format-specific code
 - Typed postMessage protocol between hook and worker with structured error propagation
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
 - Compact, versioned share-link codec with strict URL validation and browser-native SHA-256 verification
 - Hand-written `.npy`/`.npz` reader (no zip library dependency): a minimal central-directory ZIP walk plus the browser's native `DecompressionStream` for DEFLATE entries
-- 359 tests across 24 files; zero TypeScript errors on strict mode
+- 389 tests across 25 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -244,10 +256,14 @@ src/
     graphUtils.ts         Pure graph transforms: selection, filter, exclusion, tracing, depth,
                           delete eligibility, delete-with-reconnect, passthrough insertion,
                           rewire validation (cycle, self-connect, tensor compatibility), edge
-                          rewiring, addCustomNode
-                          and the curated op-type menu, structuralNodeIndex (unifies original and
-                          custom-added node addressing), OP_CATEGORIES (ONNX + TFLite op names),
-                          and buildGraphDiff for the original-versus-current overlay
+                          rewiring, addCustomNode, insertRecipeNode (chain-aware boundary
+                          insertion for pipeline recipes), currentInputBoundaryTensor
+                          and the curated op-type menu, structuralNodeIndex (unifies original,
+                          custom-added, and recipe node addressing), OP_CATEGORIES (ONNX + TFLite
+                          op names), and buildGraphDiff for the original-versus-current overlay
+    pipelineRecipes.ts    Curated preprocessing/postprocessing recipe catalog (Cast, Resize,
+                          Transpose, L2 Normalize, Softmax, Sigmoid, Top-K) and resolveRecipe,
+                          which adapts a recipe to the loaded model's declared opset
     shareLinks.ts         Compact URL-hash codec, model fingerprinting, input validation,
                           and verified history reconstruction
     subgraphExtractor.ts  Minimal-repro extraction: selected-nodes-only GraphProto rebuild
@@ -280,6 +296,11 @@ src/
     v1.7.test.ts          Graph diff metadata, ghost rendering, change-log copy, and overlay state
     v1.8.test.ts          Tensor metadata alignment, rewire compatibility, and rejection feedback
     v2.0.test.tsx         Share codec, hashing, validation, verification, replay, and clipboard flow
+    v2.1.test.tsx         NPY/NPZ parsing, output comparison math, validation panel UI
+    v2.2.test.tsx         Subgraph extraction: boundary promotion, connectivity checks, writer round-trip
+    v2.3.test.tsx         Deployment surgery: rename/retype/promote/replace writer ops and UI wiring
+    v2.4.test.tsx         Pipeline recipes: writer insertRecipe (chaining, extra inputs/outputs,
+                          opset adaptation), graphUtils insertRecipeNode, and recipe-picker UI
 ```
 
 ---
@@ -288,7 +309,7 @@ src/
 
 ```bash
 npm run dev      # Dev server with COOP/COEP headers
-npm test         # 299 tests across 21 files
+npm test         # 389 tests across 25 files
 npx tsc --noEmit # Type-check without building
 npm run build    # Production build
 ```
@@ -299,6 +320,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 2.4.0 | Pipeline recipes: guided, chainable insertion of preprocessing (Cast, Resize, Transpose, L2 Normalize) and postprocessing (Softmax, Sigmoid, Top-K, Transpose) ops at any graph boundary, opset-adaptive |
 | 2.3.0 | Deployment surgery: rename nodes and tensors, edit graph I/O names/shapes/symbolic dims/data types, promote intermediate outputs, inspect and replace small constants |
 | 2.2.0 | Minimal reproductions: extract a selected connected subgraph as a standalone, validated ONNX file with boundary tensors promoted to graph I/O |
 | 2.1.0 | Behavioral validation: run the original and edited model against identical `.npy`/`.npz` or generated inputs and compare outputs |

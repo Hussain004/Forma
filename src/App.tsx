@@ -11,8 +11,9 @@ import { useOnnxWorker } from './hooks/useOnnxWorker'
 import { isNpyBuffer, isNpzBuffer, parseNpy, parseNpz, type ParsedArray } from './lib/npyParser'
 import type { ValidationRunResult } from './lib/validationUtils'
 import type { ProvidedValidationInput } from './workers/onnxWorker'
-import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, validateRewire, rewireEdge, addCustomNode, structuralNodeIndex, graphIOIndex, buildGraphDiff, isConnectedSubgraph, renameNode, renameTensor, setGraphIOType, replaceConstantValues, CURATED_NODE_TYPES, type SelectableGraph } from './lib/graphUtils'
+import { toSelectableGraph, deselectAll, filterGraph, excludeNode, includeNode, setMultiSelection, bulkExclude, bulkInclude, computeOpCounts, computeGraphDepth, getAncestors, getDescendants, getDeleteEligibility, deleteNodeWithReconnect, insertPassthroughNode, validateRewire, rewireEdge, addCustomNode, structuralNodeIndex, graphIOIndex, buildGraphDiff, isConnectedSubgraph, renameNode, renameTensor, setGraphIOType, replaceConstantValues, insertRecipeNode, currentInputBoundaryTensor, CURATED_NODE_TYPES, type SelectableGraph } from './lib/graphUtils'
 import type { HistoryEntry, StructuralHistoryEntry } from './lib/graphUtils'
+import { resolveRecipe, type PipelineRecipe } from './lib/pipelineRecipes'
 import { formatQuantizeEstimate } from './lib/quantize'
 import type { OnnxDim, OnnxNode } from './lib/onnxTypes'
 import type { QuantizeEstimate } from './hooks/useOnnxWorker'
@@ -603,6 +604,7 @@ function applyStructuralEdit(g: SelectableGraph, op: GraphEdit): SelectableGraph
     case 'setGraphIO': return setGraphIOType(g, op.nodeId, op.elemType, op.dims)
     case 'promoteOutput': return g
     case 'replaceConstant': return replaceConstantValues(g, op.initializerName, op.values)
+    case 'insertRecipe': return insertRecipeNode(g, op.anchorKind, op.ioIndex, op.anchorTensor, op.newNodeId, op.opType, op.attrs, op.extraInputs.length, op.extraOutputCount)
   }
 }
 
@@ -619,6 +621,7 @@ function toWriterOp(op: GraphEdit): StructuralOp {
     case 'setGraphIO': return { type: 'setGraphIO', ioKind: op.ioKind, ioIndex: op.ioIndex, elemType: op.elemType, dims: op.dims }
     case 'promoteOutput': return { type: 'promoteOutput', tensorName: op.tensorName }
     case 'replaceConstant': return { type: 'replaceConstant', initializerName: op.initializerName, values: op.values }
+    case 'insertRecipe': return { type: 'insertRecipe', anchorKind: op.anchorKind, ioIndex: op.ioIndex, anchorTensor: op.anchorTensor, newNodeIndex: op.newNodeIndex, opType: op.opType, attrs: op.attrs, extraInputs: op.extraInputs, extraOutputCount: op.extraOutputCount, extraOutputElemTypes: op.extraOutputElemTypes }
   }
 }
 
@@ -941,23 +944,26 @@ function App() {
     return operations
   }, [activeHistory])
 
-  const graphWithOverrides = useMemo((): SelectableGraph | null => {
-    if (!selectableGraph || attrOverrides.size === 0) return selectableGraph
+  // Structural edits apply FIRST, attribute overrides SECOND -- a node created
+  // by a structural edit this same session (addNode's custom_N, insertRecipe's
+  // recipe_N) doesn't exist yet in selectableGraph, so overrides keyed by its
+  // id can only land once it's actually present in the graph they're mapped onto.
+  const graphWithStructuralEdits = useMemo((): SelectableGraph | null => {
+    if (!selectableGraph) return null
+    const structural = structuralOps.length === 0
+      ? selectableGraph
+      : structuralOps.reduce<SelectableGraph>((g, op) => applyStructuralEdit(g, op), selectableGraph)
+    if (attrOverrides.size === 0) return structural
     return {
-      ...selectableGraph,
-      nodes: selectableGraph.nodes.map(n => {
+      ...structural,
+      nodes: structural.nodes.map(n => {
         const overrides = attrOverrides.get(n.id)
         if (!overrides) return n
         const isModified = Object.entries(overrides).some(([k, v]) => v !== n.attributes[k])
         return { ...n, attributes: { ...n.attributes, ...overrides }, isModified }
       }),
     }
-  }, [selectableGraph, attrOverrides])
-
-  const graphWithStructuralEdits = useMemo((): SelectableGraph | null => {
-    if (!graphWithOverrides || structuralOps.length === 0) return graphWithOverrides
-    return structuralOps.reduce<SelectableGraph>((g, op) => applyStructuralEdit(g, op), graphWithOverrides)
-  }, [graphWithOverrides, structuralOps])
+  }, [selectableGraph, structuralOps, attrOverrides])
   structuralGraphRef.current = graphWithStructuralEdits
 
   const filteredGraph = useMemo(
@@ -1249,6 +1255,39 @@ function App() {
       return
     }
     appendHistoryEntry({ type: 'replaceConstant', initializerName, values })
+  }
+
+  // Guided pipeline-recipe insertion (v2.4, see pipelineRecipes.ts). Shares
+  // customNodeCounterRef with addNode so a recipe's id can never collide with
+  // a custom node's -- see graphUtils's CUSTOM_NODE_ID_RE. anchorTensor is
+  // only resolved for an input anchor (see currentInputBoundaryTensor); an
+  // output anchor's target never changes, so the writer re-derives it itself.
+  const handleInsertRecipe = (anchorKind: 'input' | 'output', ioIndex: number, recipe: PipelineRecipe) => {
+    if (!graphWithStructuralEdits) return
+    let anchorTensor = ''
+    if (anchorKind === 'input') {
+      const resolved = currentInputBoundaryTensor(graphWithStructuralEdits, ioIndex)
+      if (!resolved) return
+      anchorTensor = resolved
+    }
+    const resolved = resolveRecipe(recipe, graph?.metadata?.opsetVersion)
+    customNodeCounterRef.current += 1
+    const newNodeIndex = customNodeCounterRef.current
+    appendHistoryEntry({
+      type: 'insertRecipe',
+      anchorKind,
+      ioIndex,
+      anchorTensor,
+      newNodeId: `recipe_${newNodeIndex}`,
+      newNodeIndex,
+      opType: resolved.opType,
+      recipeLabel: resolved.label,
+      attrs: resolved.attrs,
+      extraInputs: resolved.extraInputs ?? [],
+      extraOutputCount: resolved.extraOutputCount ?? 0,
+      extraOutputElemTypes: resolved.extraOutputElemTypes ?? [],
+    })
+    announce(`Inserted ${recipe.label} (Ctrl+Z to undo)`)
   }
 
   // Fired by GraphCanvas when a drag-to-connect lands on a specific input handle.
@@ -1794,7 +1833,10 @@ function App() {
                       onJumpToState={handleHistoryJump}
                     />
                   ) : (
-                    <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onExtractRepro={isReadOnly ? undefined : handleExtractRepro} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} onCopy={() => announce('Copied to clipboard')} onRenameNode={isReadOnly ? undefined : handleRenameNode} onRenameTensor={isReadOnly ? undefined : handleRenameTensor} onSetGraphIO={isReadOnly ? undefined : handleSetGraphIO} onPromoteOutput={isReadOnly ? undefined : handlePromoteOutput} onReplaceConstant={isReadOnly ? undefined : handleReplaceConstant} />
+                    <LayerInspector node={selectedNode} onToggleExclude={handleToggleExclude} quantizeEstimate={quantizeEstimate} modelStats={modelStats} multiSelection={multiSelection} onBulkExclude={handleBulkExclude} onBulkInclude={handleBulkInclude} onBulkDelete={isReadOnly ? undefined : handleBulkDelete} onExtractRepro={isReadOnly ? undefined : handleExtractRepro} onAttrEdit={isReadOnly ? undefined : handleAttrEdit} onDeleteNode={isReadOnly ? undefined : handleDeleteNode} deleteEligibility={isReadOnly ? undefined : deleteEligibility} onCopy={() => announce('Copied to clipboard')} onRenameNode={isReadOnly ? undefined : handleRenameNode} onRenameTensor={isReadOnly ? undefined : handleRenameTensor} onSetGraphIO={isReadOnly ? undefined : handleSetGraphIO} onPromoteOutput={isReadOnly ? undefined : handlePromoteOutput} onReplaceConstant={isReadOnly ? undefined : handleReplaceConstant} onInsertRecipe={isReadOnly ? undefined : (recipe: PipelineRecipe) => {
+                      const io = selectedNode ? graphIOIndex(selectedNode.id) : null
+                      if (io) handleInsertRecipe(io.ioKind, io.ioIndex, recipe)
+                    }} />
                   )}
                 </div>
               </div>
