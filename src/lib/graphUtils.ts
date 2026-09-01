@@ -102,6 +102,32 @@ export interface ReplaceConstantHistoryEntry {
   values: number[]
 }
 
+// v2.4 guided recipe insertion (see pipelineRecipes.ts). newNodeIndex draws
+// from the SAME counter as addNode's custom_N ids (see structuralNodeIndex
+// below) so a recipe node is addressable for further attribute edits,
+// renames, or deletion exactly like a custom-added one -- newNodeId is
+// `recipe_${newNodeIndex}` rather than `custom_${newNodeIndex}` purely for a
+// clearer canvas label. anchorTensor is the CURRENT boundary tensor for an
+// 'input' anchor, captured live at insertion time so chaining several
+// preprocessing recipes on one graph input attaches each new one after the
+// last, rather than every one racing to intercept the original input tensor;
+// it's unused for an 'output' anchor, whose target (the graph output's own
+// declared name) never changes and is re-derived fresh from ioIndex instead.
+export interface InsertRecipeHistoryEntry {
+  type: 'insertRecipe'
+  anchorKind: 'input' | 'output'
+  ioIndex: number
+  anchorTensor: string
+  newNodeId: string
+  newNodeIndex: number
+  opType: string
+  recipeLabel: string
+  attrs: { name: string; kind: 'I' | 'F' | 'S' | 'INTS' | 'FLOATS'; value: string | number }[]
+  extraInputs: { kind: 'empty' | 'const'; elemType?: number; dims?: number[]; values?: number[] }[]
+  extraOutputCount: number
+  extraOutputElemTypes: number[]
+}
+
 export type StructuralHistoryEntry =
   | DeleteHistoryEntry
   | InsertPassthroughHistoryEntry
@@ -112,6 +138,7 @@ export type StructuralHistoryEntry =
   | SetGraphIOHistoryEntry
   | PromoteOutputHistoryEntry
   | ReplaceConstantHistoryEntry
+  | InsertRecipeHistoryEntry
 
 // The history log is the sole source of truth for model edits. Its entries
 // preserve the live node ids needed by the canvas alongside the stable indexes
@@ -124,6 +151,8 @@ export type HistoryEntry =
 export function friendlyNodeLabel(nodeId: string): string {
   const original = /^node_\d+_(.+)$/.exec(nodeId)
   if (original) return original[1]
+  const recipe = /^recipe_(\d+)$/.exec(nodeId)
+  if (recipe) return `Recipe node ${recipe[1]}`
   const custom = /^custom_(\d+)$/.exec(nodeId)
   if (custom) return `Custom node ${custom[1]}`
   const passthrough = /^passthrough_(\d+)$/.exec(nodeId)
@@ -170,6 +199,8 @@ export function describeHistoryEntry(entry: HistoryEntry): string {
       return `Promoted ${entry.tensorName} to a graph output`
     case 'replaceConstant':
       return `Replaced ${entry.initializerName} with [${entry.values.join(', ')}]`
+    case 'insertRecipe':
+      return `Inserted ${entry.recipeLabel} (${entry.anchorKind === 'input' ? 'preprocessing' : 'postprocessing'})`
   }
 
 }
@@ -386,7 +417,11 @@ export function isConnectedSubgraph(graph: Pick<OnnxGraph, 'edges'>, nodeIds: Se
 // always against the original model, which is out of scope for now. Custom-added
 // nodes are the one exception: being addressable is the entire point of v1.5.
 const ORIGINAL_NODE_ID_RE = /^node_(\d+)_/
-const CUSTOM_NODE_ID_RE = /^custom_(\d+)$/
+// Recipe nodes (v2.4, see insertRecipeNode) share this same addressable id
+// scheme and counter as custom-added nodes -- only the id prefix differs, to
+// keep the canvas label distinct ("Recipe node" vs "Custom node") -- so an
+// `n` minted for one can never collide with an `n` minted for the other.
+const CUSTOM_NODE_ID_RE = /^(?:custom|recipe)_(\d+)$/
 
 // Maps a live node id to the signed numeric index onnxProtoWriter.ts uses to
 // address it: original nodes keep their non-negative position in the source
@@ -569,6 +604,121 @@ export function addCustomNode(
     position,
   }
   return { ...graph, nodes: [...graph.nodes, newNode] }
+}
+
+// The tensor a NEW preprocessing recipe on this graph input should intercept:
+// starts at the input's own declared tensor name, then walks forward through
+// any already-chained recipe nodes (each one always takes its boundary
+// tensor as inputs[0] and produces its replacement as outputs[0], see
+// insertRecipeNode) to the current tail of the chain. Captured live by the
+// caller and passed back into insertRecipeNode/the writer's mirrored op,
+// rather than re-derived at apply time -- same pattern as
+// insertPassthroughNode's inputPosition or rewireEdge's sourceNodeId.
+export function currentInputBoundaryTensor(graph: SelectableGraph, ioIndex: number): string | null {
+  let tensorName = graph.nodes.find((n) => n.id === `input_${ioIndex}`)?.outputs[0] ?? null
+  if (!tensorName) return null
+  let next = graph.nodes.find((n) => n.id.startsWith('recipe_') && n.inputs[0] === tensorName)
+  while (next) {
+    tensorName = next.outputs[0]
+    next = graph.nodes.find((n) => n.id.startsWith('recipe_') && n.inputs[0] === tensorName)
+  }
+  return tensorName
+}
+
+// Inserts a curated pipeline-recipe node (see pipelineRecipes.ts) at a graph
+// boundary. For an 'input' anchor, every current consumer of anchorTensor is
+// rewired to the new node's output instead -- multiple original consumers
+// (fan-out) all move together, and a second recipe chained onto the same
+// input attaches after the first because anchorTensor was captured fresh at
+// that later call (see currentInputBoundaryTensor). For an 'output' anchor,
+// the graph output's own declared name is preserved as the model's public
+// contract: whichever node currently produces it gets renamed to an internal
+// tensor, and the new recipe node becomes the one producing the public name.
+// extraOutputCount > 0 (e.g. TopK's Indices) adds trailing outputs that stay
+// unrendered on the canvas, matching promoteOutput's existing "export-time
+// only" precedent for outputs the live graph model doesn't visualize.
+export function insertRecipeNode(
+  graph: SelectableGraph,
+  anchorKind: 'input' | 'output',
+  ioIndex: number,
+  anchorTensor: string,
+  newNodeId: string,
+  opType: string,
+  attrs: { name: string; value: string | number }[],
+  extraInputCount: number,
+  extraOutputCount: number,
+): SelectableGraph {
+  const attributes = Object.fromEntries(attrs.map((a) => [a.name, a.value]))
+  const extraInputNames = Array.from({ length: extraInputCount }, (_, i) => `${newNodeId}_const${i}`)
+
+  if (anchorKind === 'input') {
+    const anchorId = `input_${ioIndex}`
+    if (!anchorTensor || !graph.nodes.some((n) => n.id === anchorId)) return graph
+    // Whoever currently PRODUCES anchorTensor -- the pseudo Input node itself
+    // for the first recipe on this input, or the previous recipe node for a
+    // chained one (see currentInputBoundaryTensor). Edges are addressed by
+    // this producer, not by anchorId, so a second chained call correctly
+    // rewires the first recipe's own outgoing edge rather than reaching past
+    // it back to the graph input's.
+    const producerId = graph.nodes.find((n) => n.outputs.includes(anchorTensor))?.id ?? anchorId
+    const newTensorName = `${newNodeId}_out`
+    const newNode: SelectableNode = {
+      id: newNodeId,
+      opType,
+      inputs: [anchorTensor, ...extraInputNames],
+      outputs: [newTensorName],
+      attributes,
+      paramCount: 0,
+      estimatedSizeMB: 0,
+      selected: false,
+    }
+    const consumerEdges = graph.edges.filter((e) => e.label === anchorTensor)
+    const rewiredEdges = consumerEdges.map((e) => ({ ...e, id: `${newNodeId}->${e.target}@${newTensorName}`, source: newNodeId, label: newTensorName }))
+    const producerEdge = { id: `${producerId}->${newNodeId}@${anchorTensor}`, source: producerId, target: newNodeId, label: anchorTensor }
+    return {
+      ...graph,
+      nodes: graph.nodes.map((n) => (
+        n.inputs.includes(anchorTensor)
+          ? { ...n, inputs: n.inputs.map((t) => (t === anchorTensor ? newTensorName : t)) }
+          : n
+      )).concat(newNode),
+      edges: graph.edges.filter((e) => e.label !== anchorTensor).concat(rewiredEdges, [producerEdge]),
+    }
+  }
+
+  const anchorId = `output_${ioIndex}`
+  const outputNode = graph.nodes.find((n) => n.id === anchorId)
+  const publicName = outputNode?.inputs[0]
+  if (!outputNode || !publicName) return graph
+  const internalName = `${newNodeId}_in`
+  const extraOutputNames = Array.from({ length: extraOutputCount }, (_, i) => `${newNodeId}_extra${i}`)
+  const newNode: SelectableNode = {
+    id: newNodeId,
+    opType,
+    inputs: [internalName, ...extraInputNames],
+    outputs: [publicName, ...extraOutputNames],
+    attributes,
+    paramCount: 0,
+    estimatedSizeMB: 0,
+    selected: false,
+  }
+  const renamedNodes = graph.nodes.map((n) => (
+    n.id === anchorId ? n : {
+      ...n,
+      inputs: n.inputs.map((t) => (t === publicName ? internalName : t)),
+      outputs: n.outputs.map((t) => (t === publicName ? internalName : t)),
+    }
+  ))
+  const renamedEdges = graph.edges.map((e) => (e.label === publicName ? { ...e, label: internalName } : e))
+  const rewiredProducerEdges = renamedEdges
+    .filter((e) => e.target === anchorId)
+    .map((e) => ({ ...e, id: `${e.source}->${newNodeId}@${internalName}`, target: newNodeId }))
+  const newNodeToOutputEdge = { id: `${newNodeId}->${anchorId}@${publicName}`, source: newNodeId, target: anchorId, label: publicName }
+  return {
+    ...graph,
+    nodes: renamedNodes.concat(newNode),
+    edges: renamedEdges.filter((e) => e.target !== anchorId).concat(rewiredProducerEdges, [newNodeToOutputEdge]),
+  }
 }
 
 // Cosmetic only -- NodeProto.name doesn't participate in wiring, so this never
