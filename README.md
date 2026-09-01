@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Version](https://img.shields.io/badge/version-2.4.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
+[![Version](https://img.shields.io/badge/version-2.5.0-FFB000.svg)](https://github.com/Hussain004/Forma/releases)
 
 [**Live Application**](https://forma-ml.vercel.app) · [Issues](https://github.com/Hussain004/Forma/issues) · [Releases](https://github.com/Hussain004/Forma/releases)
 
@@ -132,6 +132,18 @@ fingerprint before any edits are replayed.
 - A recipe that reduces or reshapes its output (Top-K, and any future one like it) drops the now-stale declared shape on the graph output it feeds rather than leaving a declaration onnxruntime's own shape inference would reject; dtype is preserved
 - Detection postprocessing (NonMaxSuppression) is deliberately out of scope: it needs two pre-existing internal tensors (boxes and scores) as inputs, not one boundary tensor, so it doesn't fit this insert-at-a-boundary model
 
+### Model Comparison
+
+- Load two independent ONNX files (baseline and candidate) side by side and diff them without touching the main editor's edit history at all
+- Structural diff: node counts, an op-type-count table restricted to types whose count actually changed, and full added/removed node lists
+- Nodes are matched between the two files by name when every node on both sides has a unique one (true for most real exports); otherwise falls back to pairing the Nth occurrence of each op type on one side with the Nth on the other, and says which strategy was used
+- Attribute diff on every matched node pair, initializer diff (added, removed, or changed shape/dtype, reconstructed from consumed-but-never-produced tensor names since initializers aren't a first-class list on the graph object), graph I/O diff (shape, dtype, added/removed), and metadata diff (opset, IR version, producer)
+- Run Latency Comparison and Run Output Comparison drive two independent Web Workers (one per model) so a candidate that fails to load or infer never hides the baseline's real result, or vice versa
+- Output comparison reuses the same max-abs-error/max-rel-error/cosine-similarity/Top-K math as Behavioral Validation, against a single-sided generated-input inference run
+- Export Report downloads a plain-text summary of every section above, including latency and output numbers once run
+- Export Edit Recipe appears only when the candidate is reachable from the baseline by attribute edits alone (matched by name, nothing structural added, removed, or reshaped). In that case the diff already *is* a Forma edit history, so it reuses the existing share-link mechanism verbatim: a verified URL that replays the exact attribute changes onto the baseline model when opened
+- TFLite is rejected on either side with a clear message rather than silently producing an empty diff, consistent with TFLite being read-only everywhere else in the app
+
 ### TFLite Support (Read-Only)
 
 - Format detected by the file's own identifier bytes, not just its extension, so drag-and-drop works correctly regardless of how the file is named
@@ -165,7 +177,9 @@ fingerprint before any edits are replayed.
 - `SharedArrayBuffer` multi-threading via COOP/COEP headers
 - Compact, versioned share-link codec with strict URL validation and browser-native SHA-256 verification
 - Hand-written `.npy`/`.npz` reader (no zip library dependency): a minimal central-directory ZIP walk plus the browser's native `DecompressionStream` for DEFLATE entries
-- 389 tests across 25 files; zero TypeScript errors on strict mode
+- Model Comparison runs two full `useOnnxWorker` instances (two real Web Worker threads) rather than one, so the baseline and candidate load, benchmark, and infer with fully independent onnxruntime-web sessions; the worker gained one new message, `RUN_GENERATED`, a single-sided version of the existing VALIDATE handler's internal generated-input inference path, reused as-is rather than duplicated
+- Two session-creating actions (Benchmark and Output Comparison) sharing one worker instance are mutually exclusive in the UI: onnxruntime-web's WASM backend rejects a second concurrent `InferenceSession.create()` on the same worker thread with a "Session already started" error, found by driving the real UI end to end, not by unit tests alone
+- 406 tests across 26 files; zero TypeScript errors on strict mode
 
 ---
 
@@ -242,6 +256,9 @@ src/
     HistoryPanel.tsx       Timeline of applied and redoable edits with point-in-time navigation
     ChangeLogPanel.tsx     Copyable plain-text summary of the active edit-history prefix
     ModelDropzone.tsx     Drag-and-drop with progress indication
+    ModelComparePage.tsx  Two-file model comparison view: independent baseline/candidate
+                          drop slots, structural diff rendering, latency/output comparison
+                          triggers, report and edit-recipe export
   hooks/
     useOnnxWorker.ts      Typed React hook wrapping the ONNX Web Worker
   lib/
@@ -268,6 +285,10 @@ src/
                           and verified history reconstruction
     subgraphExtractor.ts  Minimal-repro extraction: selected-nodes-only GraphProto rebuild
                           with boundary tensors promoted to fresh graph inputs/outputs
+    modelComparison.ts    Pure structural diff between two independently loaded OnnxGraphs:
+                          node matching (by name or op-type position), attribute/initializer/
+                          graph-I/O/metadata diffs, plain-text report formatting, and the
+                          attribute-only edit-recipe check
     quantize.ts           INT8 size estimation and formatting
   workers/
     onnxWorker.ts         Web Worker: LOAD_MODEL (format-sniffed), BENCHMARK, EXPORT, EXPORT_MODIFIED
@@ -301,6 +322,10 @@ src/
     v2.3.test.tsx         Deployment surgery: rename/retype/promote/replace writer ops and UI wiring
     v2.4.test.tsx         Pipeline recipes: writer insertRecipe (chaining, extra inputs/outputs,
                           opset adaptation), graphUtils insertRecipeNode, and recipe-picker UI
+    v2.5.test.tsx         Model comparison: node matching, attribute/initializer/I-O/metadata
+                          diffs, report formatting, edit-recipe eligibility, and the compare
+                          page's dual-worker wiring (loading, latency, output comparison,
+                          edit-recipe export, TFLite rejection)
 ```
 
 ---
@@ -309,7 +334,7 @@ src/
 
 ```bash
 npm run dev      # Dev server with COOP/COEP headers
-npm test         # 389 tests across 25 files
+npm test         # 406 tests across 26 files
 npx tsc --noEmit # Type-check without building
 npm run build    # Production build
 ```
@@ -320,6 +345,7 @@ npm run build    # Production build
 
 | Version | Scope |
 |---|---|
+| 2.5.0 | Model comparison: load a baseline and candidate ONNX file side by side, diff graph structure, attributes, initializers, and I/O, compare latency and outputs via two independent Web Workers, and export a report or (attribute-only diffs) an applicable edit-recipe share link |
 | 2.4.0 | Pipeline recipes: guided, chainable insertion of preprocessing (Cast, Resize, Transpose, L2 Normalize) and postprocessing (Softmax, Sigmoid, Top-K, Transpose) ops at any graph boundary, opset-adaptive |
 | 2.3.0 | Deployment surgery: rename nodes and tensors, edit graph I/O names/shapes/symbolic dims/data types, promote intermediate outputs, inspect and replace small constants |
 | 2.2.0 | Minimal reproductions: extract a selected connected subgraph as a standalone, validated ONNX file with boundary tensors promoted to graph I/O |

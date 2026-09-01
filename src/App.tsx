@@ -7,6 +7,7 @@ import { LayerInspector } from './components/LayerInspector'
 import { HistoryPanel } from './components/HistoryPanel'
 import { ChangeLogPanel } from './components/ChangeLogPanel'
 import { ValidationPanel } from './components/ValidationPanel'
+import { ModelComparePage } from './components/ModelComparePage'
 import { useOnnxWorker } from './hooks/useOnnxWorker'
 import { isNpyBuffer, isNpzBuffer, parseNpy, parseNpz, type ParsedArray } from './lib/npyParser'
 import type { ValidationRunResult } from './lib/validationUtils'
@@ -632,6 +633,7 @@ function App() {
   // Modified are all withheld for it -- see tfliteParser.ts and onnxWorker.ts.
   const isReadOnly = graph?.format === 'tflite'
   const isNarrowViewport = useIsNarrowViewport()
+  const [compareMode, setCompareMode] = useState(false)
   const [selectableGraph, setSelectableGraph] = useState<SelectableGraph | null>(null)
   const [filterQuery, setFilterQuery] = useState('')
   const [layoutDir, setLayoutDir] = useState<'TB' | 'LR'>('TB')
@@ -1556,6 +1558,7 @@ function App() {
   }
 
   if (isNarrowViewport) return <DesktopGate />
+  if (compareMode) return <ModelComparePage onBack={() => setCompareMode(false)} />
 
   return (
     <div
@@ -1578,6 +1581,7 @@ function App() {
               fingerprint: pendingShare.modelHash.slice(0, 12),
               verifying: shareVerifying,
             } : null}
+            onCompareMode={() => setCompareMode(true)}
           />
         </div>
       )}

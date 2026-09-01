@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import type { OnnxGraph } from '../lib/onnxTypes'
 import type { StructuralOp } from '../lib/onnxProtoWriter'
 import type { ProvidedValidationInput } from '../workers/onnxWorker'
-import type { ValidationRunResult } from '../lib/validationUtils'
+import type { SideRunResult, ValidationRunResult } from '../lib/validationUtils'
 
 type Status = 'idle' | 'loading' | 'ready' | 'running' | 'benchmarking' | 'exporting' | 'error'
 
@@ -28,6 +28,7 @@ type WorkerResponse =
   | { type: 'EXPORT_RESULT'; payload: ArrayBuffer }
   | { type: 'VERIFY_RESULT'; payload: { valid: boolean; message?: string } }
   | { type: 'VALIDATION_RESULT'; payload: ValidationRunResult }
+  | { type: 'GENERATED_RESULT'; payload: SideRunResult }
   | { type: 'ERROR'; payload: string; scope: 'load' | 'operation' }
   | { type: 'PROGRESS'; payload: { stage: string; percent: number } }
 
@@ -59,6 +60,8 @@ export function useOnnxWorker() {
   const exportReject = useRef<((err: Error) => void) | null>(null)
   const validationResolve = useRef<((r: ValidationRunResult) => void) | null>(null)
   const validationReject = useRef<((err: Error) => void) | null>(null)
+  const generatedResolve = useRef<((r: SideRunResult) => void) | null>(null)
+  const generatedReject = useRef<((err: Error) => void) | null>(null)
 
   useEffect(() => {
     const worker = new Worker(new URL('../workers/onnxWorker.ts', import.meta.url), { type: 'module' })
@@ -86,6 +89,10 @@ export function useOnnxWorker() {
         validationResolve.current?.(msg.payload)
         validationResolve.current = null
         validationReject.current = null
+      } else if (msg.type === 'GENERATED_RESULT') {
+        generatedResolve.current?.(msg.payload)
+        generatedResolve.current = null
+        generatedReject.current = null
       } else if (msg.type === 'INFERENCE_RESULT') {
         inferenceResolverRef.current?.(msg.payload.outputs)
         inferenceResolverRef.current = null
@@ -107,6 +114,11 @@ export function useOnnxWorker() {
           validationReject.current(new Error(msg.payload))
           validationResolve.current = null
           validationReject.current = null
+        }
+        if (generatedReject.current) {
+          generatedReject.current(new Error(msg.payload))
+          generatedResolve.current = null
+          generatedReject.current = null
         }
         if (msg.scope === 'load') {
           setError(msg.payload)
@@ -195,6 +207,18 @@ export function useOnnxWorker() {
     })
   }, [])
 
+  // Single-sided run on generated (deterministic pseudo-random) inputs, for
+  // comparing two independent models (v2.5), not an original-vs-modified
+  // pair of the same one (that's runValidation).
+  const runGeneratedInference = useCallback((): Promise<SideRunResult> => {
+    return new Promise((resolve, reject) => {
+      if (!workerRef.current) { reject(new Error('No worker')); return }
+      generatedResolve.current = resolve
+      generatedReject.current = reject
+      workerRef.current.postMessage({ type: 'RUN_GENERATED' })
+    })
+  }, [])
+
   const runValidation = useCallback((
     overrides: Map<number, Record<string, string | number>>,
     structuralOps: StructuralOp[],
@@ -208,5 +232,5 @@ export function useOnnxWorker() {
     })
   }, [])
 
-  return { loadModel, runInference, runBenchmark, exportModel, exportModifiedModel, runValidation, extractSubgraph, graph, status, error, operationError, verifyResult, progress, benchmarkResult, quantizeEstimate }
+  return { loadModel, runInference, runBenchmark, exportModel, exportModifiedModel, runValidation, runGeneratedInference, extractSubgraph, graph, status, error, operationError, verifyResult, progress, benchmarkResult, quantizeEstimate }
 }
