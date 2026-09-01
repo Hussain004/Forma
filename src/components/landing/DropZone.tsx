@@ -15,6 +15,7 @@ interface DropZoneProps {
   progressLabel?: string | null
   progressPercent?: number | null
   shareRequest?: SharedModelRequest | null
+  onCompareMode?: () => void
 }
 
 function friendlyErrorHeadline(raw: string | null | undefined): string {
@@ -25,7 +26,7 @@ function friendlyErrorHeadline(raw: string | null | undefined): string {
   return 'Something went wrong while loading this model.'
 }
 
-export function DropZone({ onModelLoaded, status, error, progressLabel, progressPercent, shareRequest }: DropZoneProps) {
+export function DropZone({ onModelLoaded, status, error, progressLabel, progressPercent, shareRequest, onCompareMode }: DropZoneProps) {
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -196,6 +197,15 @@ export function DropZone({ onModelLoaded, status, error, progressLabel, progress
               {!shareRequest && (
                 <button onClick={handleLoadSample} className="landing-text-action">
                   Load sample model <NerdGlyph glyph="arrowRight" />
+                </button>
+              )}
+              {!shareRequest && onCompareMode && (
+                <button
+                  data-testid="compare-mode-entry"
+                  onClick={(e) => { e.stopPropagation(); onCompareMode() }}
+                  className="landing-text-action"
+                >
+                  Compare two models <NerdGlyph glyph="arrowRight" />
                 </button>
               )}
             </div>
