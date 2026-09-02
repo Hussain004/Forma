@@ -132,17 +132,17 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
     >
       <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: accent, borderRadius: '2px 0 0 2px', transition: 'background-color 150ms ease' }} />
       {data.isModified && (
-        <div style={{ position: 'absolute', top: 5, right: 5, fontSize: 9, letterSpacing: '0.08em', color: 'var(--color-amber)', background: 'rgba(255,176,0,0.12)', padding: '1px 4px', borderRadius: 1 }}>
+        <div style={{ position: 'absolute', top: 5, right: 5, fontSize: 11, letterSpacing: '0.08em', color: 'var(--color-amber)', background: 'rgba(255,176,0,0.12)', padding: '1px 4px', borderRadius: 1 }}>
           MOD
         </div>
       )}
       {data.isSynthetic && (
-        <div style={{ position: 'absolute', top: 5, left: 7, fontSize: 9, letterSpacing: '0.08em', color: 'var(--color-green)', background: 'rgba(82,197,122,0.12)', padding: '1px 4px', borderRadius: 1 }}>
+        <div style={{ position: 'absolute', top: 5, left: 7, fontSize: 11, letterSpacing: '0.08em', color: 'var(--color-green)', background: 'rgba(82,197,122,0.12)', padding: '1px 4px', borderRadius: 1 }}>
           NEW
         </div>
       )}
       {data.isDeleted && (
-        <div data-testid="deleted-node-badge" style={{ position: 'absolute', top: 5, right: 5, fontSize: 9, letterSpacing: '0.08em', color: 'var(--color-error)', background: 'rgba(192,57,43,0.12)', padding: '1px 4px', borderRadius: 1 }}>
+        <div data-testid="deleted-node-badge" style={{ position: 'absolute', top: 5, right: 5, fontSize: 11, letterSpacing: '0.08em', color: 'var(--color-error)', background: 'rgba(192,57,43,0.12)', padding: '1px 4px', borderRadius: 1 }}>
           DEL
         </div>
       )}
@@ -162,11 +162,11 @@ function OperatorNode({ data, selected }: NodeProps<Node<OperatorData>>) {
       <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {data.opType}
       </div>
-      <div style={{ color: 'var(--text-secondary)', fontSize: 10, letterSpacing: '0.06em' }}>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 12, letterSpacing: '0.06em' }}>
         {data.paramCount > 0 ? data.paramCount.toLocaleString() + ' PARAMS' : 'NO PARAMS'}
       </div>
       {data.shapeLabel && (
-        <div style={{ color: 'var(--text-dim)', fontSize: 10, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ color: 'var(--text-dim)', fontSize: 12, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {data.shapeLabel}
         </div>
       )}
@@ -216,7 +216,7 @@ function IONode({ data, selected }: NodeProps<Node<IOData>>) {
         {data.label}
       </div>
       {data.shapeLabel && (
-        <div style={{ color: 'var(--text-dim)', fontSize: 10, letterSpacing: '0.04em' }}>
+        <div style={{ color: 'var(--text-dim)', fontSize: 12, letterSpacing: '0.04em' }}>
           {data.shapeLabel}
         </div>
       )}
@@ -313,7 +313,7 @@ function toFlowGraph(
         target: e.target,
         targetHandle: inputPosition >= 0 ? `in-${inputPosition}` : undefined,
         label: shapeLabel,
-        labelStyle: { fontSize: 10, fontFamily: 'JetBrains Mono, monospace', fill: 'var(--text-dim)' },
+        labelStyle: { fontSize: 12, fontFamily: 'JetBrains Mono, monospace', fill: 'var(--text-dim)' },
         labelBgStyle: { fill: 'var(--bg-base)', fillOpacity: 0.85 },
         labelBgPadding: [3, 4] as [number, number],
         style: { stroke, strokeWidth: e.diffStatus === 'changed' ? 2 : 1, strokeDasharray: e.diffStatus === 'removed' ? '5 4' : undefined, cursor: e.diffStatus === 'removed' ? 'default' : 'pointer' },
@@ -464,7 +464,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             border: '1px solid rgba(255,255,255,0.12)',
             borderRadius: 2,
             fontFamily: 'var(--font-mono)',
-            fontSize: 10,
+            fontSize: 12,
             letterSpacing: '0.08em',
             textTransform: 'uppercase',
             whiteSpace: 'nowrap',
@@ -557,7 +557,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
         <JumpController jumpToNodeId={jumpToNodeId} />
       </ReactFlow>
       {diffActive && (
-        <div data-testid="diff-legend" style={{ position: 'absolute', top: 8, left: 8, zIndex: 1200, display: 'flex', alignItems: 'center', gap: 12, padding: '4px 8px', background: 'var(--bg-raised)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 2, fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.06em', textTransform: 'uppercase', pointerEvents: 'none' }}>
+        <div data-testid="diff-legend" style={{ position: 'absolute', top: 8, left: 8, zIndex: 1200, display: 'flex', alignItems: 'center', gap: 14, padding: '6px 10px', background: 'var(--bg-raised)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 2, fontFamily: 'var(--font-mono)', fontSize: 14, letterSpacing: '0.06em', textTransform: 'uppercase', pointerEvents: 'none' }}>
           <span style={{ color: 'var(--color-error)' }}>DEL</span>
           <span style={{ color: 'var(--color-amber)' }}>MOD</span>
           <span style={{ color: 'var(--color-green)' }}>NEW</span>
@@ -583,7 +583,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             zIndex: 1500,
           }}
         >
-          <span style={{ color: 'var(--text-secondary)', fontSize: 11, letterSpacing: '0.02em', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ color: 'var(--text-secondary)', fontSize: 13, letterSpacing: '0.02em', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {edgePopover.tensorName}
           </span>
           <button
@@ -593,7 +593,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
               setEdgePopover(null)
             }}
             className="btn-bar btn-primary"
-            style={{ fontSize: 10, padding: '3px 8px', whiteSpace: 'nowrap' }}
+            style={{ fontSize: 12, padding: '3px 8px', whiteSpace: 'nowrap' }}
           >
             Insert passthrough
           </button>
@@ -627,7 +627,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
           <div style={{ color: 'var(--color-amber)', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em' }}>
             {pendingNodeType.opType}
           </div>
-          <div style={{ color: 'var(--text-dim)', fontSize: 9, letterSpacing: '0.06em' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: 11, letterSpacing: '0.06em' }}>
             CLICK TO PLACE / ESC TO CANCEL
           </div>
         </div>
@@ -643,7 +643,7 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
             borderRadius: 2,
             padding: '8px 12px',
             fontFamily: 'var(--font-mono)',
-            fontSize: 11,
+            fontSize: 13,
             color: 'var(--text-primary)',
             pointerEvents: 'none',
             zIndex: 9999,
@@ -653,17 +653,17 @@ export function GraphCanvas({ onnxNodes, onnxEdges, selectedNodeId, onNodeSelect
         >
           <div style={{ color: 'var(--color-amber)', marginBottom: 2 }}>{hoveredNode.opType}</div>
           {hoveredNode.name && (
-            <div style={{ color: 'var(--text-dim)', fontSize: 9, letterSpacing: '0.04em', marginBottom: 4, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: 11, letterSpacing: '0.04em', marginBottom: 4, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {hoveredNode.name}
             </div>
           )}
           {hoveredNode.paramCount > 0 && (
-            <div style={{ color: 'var(--text-secondary)', fontSize: 10 }}>
+            <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
               {hoveredNode.paramCount.toLocaleString()} params
             </div>
           )}
           {hoveredNode.outputShapes?.[0] && (
-            <div style={{ color: 'var(--text-dim)', fontSize: 10, marginTop: 2 }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: 12, marginTop: 2 }}>
               {formatShape(hoveredNode.outputShapes[0])}
             </div>
           )}

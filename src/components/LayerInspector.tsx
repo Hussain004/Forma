@@ -62,7 +62,7 @@ interface LayerInspectorProps {
 }
 
 const bulkButtonStyle: React.CSSProperties = {
-  fontSize: 10,
+  fontSize: 12,
   padding: '2px 10px',
 }
 
@@ -88,7 +88,7 @@ const labelStyle: React.CSSProperties = {
   color: 'var(--text-secondary)',
   textTransform: 'uppercase',
   letterSpacing: '0.08em',
-  fontSize: 11,
+  fontSize: 13,
   minWidth: 96,
   flexShrink: 0,
 }
@@ -190,13 +190,13 @@ function IORow({ name, shape, fieldKey, edit, onPromote }: {
   return (
     <div style={{ ...rowStyle, gap: 8, alignItems: 'center' }}>
       {fieldKey && edit ? (
-        <EditableText fieldKey={fieldKey} value={name} edit={edit} testIdPrefix="tensor" title="Rename this tensor" textStyle={{ fontSize: 11, color: 'var(--text-secondary)' }} />
+        <EditableText fieldKey={fieldKey} value={name} edit={edit} testIdPrefix="tensor" title="Rename this tensor" textStyle={{ fontSize: 13, color: 'var(--text-secondary)' }} />
       ) : (
-        <span style={{ color: 'var(--text-secondary)', fontSize: 11, wordBreak: 'break-word', flex: 1, minWidth: 0 }}>{name}</span>
+        <span style={{ color: 'var(--text-secondary)', fontSize: 13, wordBreak: 'break-word', flex: 1, minWidth: 0 }}>{name}</span>
       )}
-      {shape && <span style={{ color: 'var(--text-dim)', fontSize: 10, whiteSpace: 'nowrap' }}>{shape}</span>}
+      {shape && <span style={{ color: 'var(--text-dim)', fontSize: 12, whiteSpace: 'nowrap' }}>{shape}</span>}
       {onPromote && (
-        <button type="button" data-testid={`promote-output-${name}`} onClick={onPromote} title="Promote this tensor to an additional graph output" className="btn-ghost" style={{ fontSize: 9, padding: '1px 6px', flexShrink: 0 }}>
+        <button type="button" data-testid={`promote-output-${name}`} onClick={onPromote} title="Promote this tensor to an additional graph output" className="btn-ghost" style={{ fontSize: 11, padding: '1px 6px', flexShrink: 0 }}>
           &rarr; OUT
         </button>
       )}
@@ -211,7 +211,7 @@ function sectionHeader(label: string) {
         color: 'var(--text-dim)',
         textTransform: 'uppercase',
         letterSpacing: '0.1em',
-        fontSize: 10,
+        fontSize: 12,
         margin: '16px 0 4px',
       }}
     >
@@ -337,7 +337,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           >
             Select a node
           </span>
-          <span style={{ color: 'var(--text-dim)', letterSpacing: '0.06em', fontSize: 10, marginTop: 8 }}>
+          <span style={{ color: 'var(--text-dim)', letterSpacing: '0.06em', fontSize: 12, marginTop: 8 }}>
             Press ? for shortcuts
           </span>
         </div>
@@ -358,7 +358,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           boxSizing: 'border-box',
         }}
       >
-        <div style={{ color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 10, marginBottom: 12 }}>
+        <div style={{ color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 12, marginBottom: 12 }}>
           Model Summary
         </div>
         {modelStats.metadata?.producerName && (
@@ -389,7 +389,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
             <span style={valueStyle}>{modelStats.graphDepth.toLocaleString()}</span>
           </div>
         )}
-        <div style={{ color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 10, margin: '16px 0 4px' }}>
+        <div style={{ color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 12, margin: '16px 0 4px' }}>
           Op Types
         </div>
         {sorted.map(([opType, count]) => (
@@ -403,18 +403,18 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
         ))}
         {legend.length > 0 && (
           <>
-            <div style={{ color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 10, margin: '16px 0 4px' }}>
+            <div style={{ color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 12, margin: '16px 0 4px' }}>
               Categories
             </div>
             {legend.map((c) => (
               <div key={c.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
                 <span style={{ ...swatchStyle, background: c.color }} />
-                <span style={{ color: 'var(--text-secondary)', fontSize: 11, letterSpacing: '0.04em' }}>{c.name}</span>
+                <span style={{ color: 'var(--text-secondary)', fontSize: 13, letterSpacing: '0.04em' }}>{c.name}</span>
               </div>
             ))}
           </>
         )}
-        <div style={{ marginTop: 20, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', color: 'var(--text-dim)', fontSize: 10, letterSpacing: '0.04em' }}>
+        <div style={{ marginTop: 20, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', color: 'var(--text-dim)', fontSize: 12, letterSpacing: '0.04em' }}>
           Click a node to inspect. Press ? for shortcuts.
         </div>
       </div>
@@ -511,7 +511,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         {node.isModified && (
           <span style={{
-            fontSize: 9,
+            fontSize: 11,
             letterSpacing: '0.08em',
             color: 'var(--color-amber)',
             background: 'rgba(255,176,0,0.12)',
@@ -525,7 +525,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
         <button
           onClick={handleCopy}
           className="btn-primary"
-          style={{ marginLeft: 'auto', fontSize: 10, padding: '2px 10px' }}
+          style={{ marginLeft: 'auto', fontSize: 12, padding: '2px 10px' }}
         >
           COPY
         </button>
@@ -567,11 +567,11 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                 />
                 {constValues && (
                   <div style={{ ...rowStyle, gap: 8, paddingLeft: 12 }}>
-                    <span style={{ color: 'var(--text-dim)', fontSize: 10, flexShrink: 0 }}>= </span>
+                    <span style={{ color: 'var(--text-dim)', fontSize: 12, flexShrink: 0 }}>= </span>
                     {onReplaceConstant ? (
-                      <EditableText fieldKey={`const:${name}`} value={constValues.join(', ')} edit={fieldEdit} testIdPrefix="const" title={`Edit constant ${name}`} textStyle={{ fontSize: 10 }} />
+                      <EditableText fieldKey={`const:${name}`} value={constValues.join(', ')} edit={fieldEdit} testIdPrefix="const" title={`Edit constant ${name}`} textStyle={{ fontSize: 12 }} />
                     ) : (
-                      <span style={{ color: 'var(--text-secondary)', fontSize: 10, wordBreak: 'break-word' }}>{constValues.join(', ')}</span>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: 12, wordBreak: 'break-word' }}>{constValues.join(', ')}</span>
                     )}
                   </div>
                 )}
@@ -641,7 +641,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                 onClick={() => onInsertRecipe(recipe)}
                 title={recipe.description}
                 className="btn-ghost"
-                style={{ textAlign: 'left', fontSize: 11, padding: '4px 8px' }}
+                style={{ textAlign: 'left', fontSize: 13, padding: '4px 8px' }}
               >
                 {recipe.label}
               </button>
@@ -654,7 +654,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
       <Row label="PARAMETERS" value={node.paramCount.toLocaleString()} />
       <Row label="EST. SIZE" value={`${node.estimatedSizeMB.toFixed(3)} MB`} />
       {node.estimatedSizeMB > 0 && quantizeEstimate && quantizeEstimate.ratio > 0 && (
-        <div style={{ color: 'var(--text-dim)', fontSize: 10, padding: '2px 0 0 108px', letterSpacing: '0.04em' }}>
+        <div style={{ color: 'var(--text-dim)', fontSize: 12, padding: '2px 0 0 108px', letterSpacing: '0.04em' }}>
           {`INT8: ${(node.estimatedSizeMB / quantizeEstimate.ratio).toFixed(3)} MB`}
         </div>
       )}
@@ -665,7 +665,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
           </span>
           <span
             title="A heuristic based on parameter count only -- not a profiling measurement"
-            style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: sensitivityColor(node.paramCount), letterSpacing: '0.04em' }}
+            style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: sensitivityColor(node.paramCount), letterSpacing: '0.04em' }}
           >
             {sensitivityLabel(node.paramCount)}
           </span>
@@ -681,7 +681,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
               style={{
                 border: node.excluded ? '1px solid var(--color-amber)' : '1px solid rgba(255,255,255,0.15)',
                 color: node.excluded ? 'var(--color-amber)' : 'var(--text-secondary)',
-                fontSize: 10,
+                fontSize: 12,
                 padding: '3px 10px',
               }}
             >
@@ -706,19 +706,19 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                     onDeleteNode(node.id, deleteEligibility.candidateInputs[0]?.position ?? null)
                   }}
                   className="btn-danger"
-                  style={{ fontSize: 10, padding: '2px 10px' }}
+                  style={{ fontSize: 12, padding: '2px 10px' }}
                 >
                   {deleteEligibility.candidateInputs.length > 1 ? 'Choose source' : 'Delete'}
                 </button>
               </div>
               {!deleteEligibility.eligible && deleteEligibility.reason && (
-                <div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.02em', paddingLeft: 108 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-dim)', letterSpacing: '0.02em', paddingLeft: 108 }}>
                   {deleteEligibility.reason}
                 </div>
               )}
               {showDeletePicker && deleteEligibility.eligible && deleteEligibility.candidateInputs.length > 1 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingLeft: 108 }}>
-                  <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                     Reconnect using
                   </div>
                   {deleteEligibility.candidateInputs.map((c) => (
@@ -733,7 +733,7 @@ export function LayerInspector({ node, onToggleExclude, quantizeEstimate, modelS
                         letterSpacing: 'normal',
                         cursor: 'pointer',
                         padding: '4px 8px',
-                        fontSize: 11,
+                        fontSize: 13,
                         fontFamily: 'var(--font-mono)',
                         color: 'var(--text-primary)',
                         background: 'rgba(255,176,0,0.06)',
