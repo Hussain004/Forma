@@ -130,14 +130,14 @@ function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
           <span style={{ color: 'var(--color-amber)', fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
             Keyboard shortcuts
           </span>
-          <button onClick={onClose} className="btn-ghost" style={{ fontSize: 10, padding: '2px 8px' }}>
+          <button onClick={onClose} className="btn-ghost" style={{ fontSize: 12, padding: '2px 8px' }}>
             Close
           </button>
         </div>
         {SHORTCUTS.map(([key, desc]) => (
           <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-            <span style={{ color: 'var(--text-primary)', fontSize: 11, letterSpacing: '0.02em' }}>{desc}</span>
-            <span style={{ color: 'var(--text-dim)', fontSize: 11, letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>{key}</span>
+            <span style={{ color: 'var(--text-primary)', fontSize: 13, letterSpacing: '0.02em' }}>{desc}</span>
+            <span style={{ color: 'var(--text-dim)', fontSize: 13, letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>{key}</span>
           </div>
         ))}
       </div>
@@ -198,7 +198,7 @@ function DesktopGate() {
         alt="The Forma editor showing a model graph with an inspector panel"
         style={{ width: '100%', maxWidth: 440, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 2 }}
       />
-      <span style={{ color: 'var(--text-dim)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', maxWidth: 320, lineHeight: 1.8 }}>
+      <span style={{ color: 'var(--text-dim)', fontSize: 13, letterSpacing: '0.1em', textTransform: 'uppercase', maxWidth: 320, lineHeight: 1.8 }}>
         Forma is a desktop tool -- open it on a larger screen
       </span>
       <a href="https://github.com/Hussain004/Forma" target="_blank" rel="noreferrer" className="btn-link btn-bar btn-ghost">
@@ -279,7 +279,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
         {modelName}
       </span>
       {isReadOnly && (
-        <span style={{ flexShrink: 0, fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-dim)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: 2, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+        <span style={{ flexShrink: 0, fontSize: 12, letterSpacing: '0.08em', color: 'var(--text-dim)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: 2, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
           TFLite read-only
         </span>
       )}
@@ -355,7 +355,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
               >
                 <span style={{ color: 'var(--text-primary)', fontSize: 13 }}>{node.opType}</span>
                 {node.paramCount > 0 && (
-                  <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>
+                  <span style={{ color: 'var(--text-dim)', fontSize: 13 }}>
                     {node.paramCount.toLocaleString()}
                   </span>
                 )}
@@ -429,7 +429,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
                     }}
                   />
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
-                    <span style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                       Inputs
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -438,11 +438,11 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
                         data-testid="add-node-input-count-dec"
                         onMouseDown={(e) => { e.preventDefault(); setAddNodeInputCount((n) => Math.max(1, n - 1)) }}
                         className="btn-ghost"
-                        style={{ padding: '0 6px', fontSize: 11, lineHeight: '16px' }}
+                        style={{ padding: '0 6px', fontSize: 13, lineHeight: '16px' }}
                       >
                         -
                       </button>
-                      <span data-testid="add-node-input-count" style={{ fontSize: 11, color: 'var(--text-primary)', minWidth: 10, textAlign: 'center' }}>
+                      <span data-testid="add-node-input-count" style={{ fontSize: 13, color: 'var(--text-primary)', minWidth: 10, textAlign: 'center' }}>
                         {addNodeInputCount}
                       </span>
                       <button
@@ -450,7 +450,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
                         data-testid="add-node-input-count-inc"
                         onMouseDown={(e) => { e.preventDefault(); setAddNodeInputCount((n) => Math.min(8, n + 1)) }}
                         className="btn-ghost"
-                        style={{ padding: '0 6px', fontSize: 11, lineHeight: '16px' }}
+                        style={{ padding: '0 6px', fontSize: 13, lineHeight: '16px' }}
                       >
                         +
                       </button>
@@ -545,7 +545,7 @@ function StatsBar({ modelName, totalParams, totalSizeMB, nodeCount, quantizeEsti
               gap: 2,
             }}>
               {!isReadOnly && benchmarkLabel && (
-                <span style={{ color: 'var(--color-green)', fontSize: 10, padding: '4px 8px' }}>{benchmarkLabel}</span>
+                <span style={{ color: 'var(--color-green)', fontSize: 12, padding: '4px 8px' }}>{benchmarkLabel}</span>
               )}
               {canShare && (
                 <button
@@ -1635,7 +1635,7 @@ function App() {
               alignItems: 'center',
               padding: '0 24px',
               fontFamily: 'var(--font-mono)',
-              fontSize: 11,
+              fontSize: 13,
               letterSpacing: '0.04em',
               background: '#0E1114',
               borderBottom: announcement ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
@@ -1691,7 +1691,7 @@ function App() {
                           background: 'var(--bg-raised)',
                           border: '1px solid rgba(255,176,0,0.25)',
                           borderRadius: 2,
-                          fontSize: 10,
+                          fontSize: 12,
                           letterSpacing: '0.06em',
                           textTransform: 'uppercase',
                           color: 'var(--color-amber)',
@@ -1702,7 +1702,7 @@ function App() {
                           aria-label={`Dismiss hint: ${hint}`}
                           onClick={() => dismissHint(i)}
                           className="btn-ghost"
-                          style={{ fontSize: 10, padding: '0 4px', lineHeight: '14px' }}
+                          style={{ fontSize: 12, padding: '0 4px', lineHeight: '14px' }}
                         >
                           x
                         </button>
@@ -1713,7 +1713,7 @@ function App() {
                     data-testid="dismiss-all-hints"
                     onClick={() => dismissHint('all')}
                     className="btn-ghost"
-                    style={{ fontSize: 10, padding: '2px 8px', whiteSpace: 'nowrap' }}
+                    style={{ fontSize: 12, padding: '2px 8px', whiteSpace: 'nowrap' }}
                   >
                     Dismiss all
                   </button>
@@ -1750,7 +1750,7 @@ function App() {
                       padding: '8px 12px',
                       borderBottom: activePanel === 'inspector' ? '2px solid var(--color-amber)' : '2px solid transparent',
                       color: activePanel === 'inspector' ? 'var(--color-amber)' : 'var(--text-dim)',
-                      fontSize: 10,
+                      fontSize: 12,
                       letterSpacing: '0.08em',
                       textTransform: 'uppercase',
                     }}
@@ -1769,7 +1769,7 @@ function App() {
                       padding: '8px 12px',
                       borderBottom: activePanel === 'history' ? '2px solid var(--color-amber)' : '2px solid transparent',
                       color: activePanel === 'history' ? 'var(--color-amber)' : 'var(--text-dim)',
-                      fontSize: 10,
+                      fontSize: 12,
                       letterSpacing: '0.08em',
                       textTransform: 'uppercase',
                     }}
@@ -1788,7 +1788,7 @@ function App() {
                       padding: '8px 12px',
                       borderBottom: activePanel === 'changes' ? '2px solid var(--color-amber)' : '2px solid transparent',
                       color: activePanel === 'changes' ? 'var(--color-amber)' : 'var(--text-dim)',
-                      fontSize: 10,
+                      fontSize: 12,
                       letterSpacing: '0.08em',
                       textTransform: 'uppercase',
                     }}
@@ -1808,7 +1808,7 @@ function App() {
                         padding: '8px 12px',
                         borderBottom: activePanel === 'validation' ? '2px solid var(--color-amber)' : '2px solid transparent',
                         color: activePanel === 'validation' ? 'var(--color-amber)' : 'var(--text-dim)',
-                        fontSize: 10,
+                        fontSize: 12,
                         letterSpacing: '0.08em',
                         textTransform: 'uppercase',
                       }}
@@ -1870,7 +1870,7 @@ function App() {
             Drop to replace current model
           </span>
           {history.index > 0 && (
-            <span style={{ color: 'var(--color-error)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+            <span style={{ color: 'var(--color-error)', fontSize: 13, letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
               Unsaved edits will be lost
             </span>
           )}

@@ -84,18 +84,18 @@ function CompareSlot({ label, status, modelName, error, onFile }: CompareSlotPro
         onChange={(e) => { const file = e.target.files?.[0]; if (file) readFile(file); e.target.value = '' }}
         style={{ display: 'none' }}
       />
-      <span style={{ color: 'var(--text-dim)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{label}</span>
-      {status === 'loading' && <span style={{ color: 'var(--color-amber)', fontSize: 11 }}>Loading...</span>}
-      {status === 'error' && <span style={{ color: 'var(--color-error)', fontSize: 11 }}>{error ?? 'Load failed'}</span>}
+      <span style={{ color: 'var(--text-dim)', fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{label}</span>
+      {status === 'loading' && <span style={{ color: 'var(--color-amber)', fontSize: 13 }}>Loading...</span>}
+      {status === 'error' && <span style={{ color: 'var(--color-error)', fontSize: 13 }}>{error ?? 'Load failed'}</span>}
       {status === 'ready' && <span style={{ color: 'var(--color-green)', fontSize: 12 }}>{modelName}</span>}
-      {status === 'idle' && <span style={{ color: 'var(--text-secondary)', fontSize: 11 }}>Drop .onnx model or click to browse</span>}
+      {status === 'idle' && <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Drop .onnx model or click to browse</span>}
     </div>
   )
 }
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <span style={{ color: 'var(--color-amber)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+    <span style={{ color: 'var(--color-amber)', fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
       {children}
     </span>
   )
@@ -236,18 +236,18 @@ export function ModelComparePage({ onBack }: ModelComparePageProps) {
         </div>
 
         {formatIssue && (
-          <span style={{ color: 'var(--color-error)', fontSize: 11 }}>
+          <span style={{ color: 'var(--color-error)', fontSize: 13 }}>
             Model comparison only supports ONNX models. TFLite is read-only, so drop an .onnx file for both sides.
           </span>
         )}
 
-        {statusMessage && <span style={{ color: 'var(--color-error)', fontSize: 11 }}>{statusMessage}</span>}
+        {statusMessage && <span style={{ color: 'var(--color-error)', fontSize: 13 }}>{statusMessage}</span>}
 
         {comparison && baseline.graph && candidate.graph && (
           <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <SectionHeader>Summary</SectionHeader>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, auto)', columnGap: 24, rowGap: 2, fontSize: 11, color: 'var(--text-secondary)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, auto)', columnGap: 24, rowGap: 2, fontSize: 13, color: 'var(--text-secondary)' }}>
                 <span>Nodes</span><span>{comparison.baselineNodeCount} -&gt; {comparison.candidateNodeCount}</span>
                 <span>Matched nodes</span><span>{comparison.nodeMatch.matches.length} (by {comparison.nodeMatch.matchedByName ? 'name' : 'op-type position'})</span>
                 <span>Added / removed nodes</span><span>{comparison.nodeMatch.addedNodes.length} / {comparison.nodeMatch.removedNodes.length}</span>
@@ -257,7 +257,7 @@ export function ModelComparePage({ onBack }: ModelComparePageProps) {
             {comparison.metadata.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <SectionHeader>Metadata changes</SectionHeader>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, auto)', columnGap: 16, rowGap: 2, fontSize: 11, color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, auto)', columnGap: 16, rowGap: 2, fontSize: 13, color: 'var(--text-secondary)' }}>
                   {comparison.metadata.map((m) => (
                     <div key={m.field} style={{ display: 'contents' }} data-testid={`compare-metadata-${m.field}`}>
                       <span>{m.field}</span><span>{String(m.baselineValue)}</span><span>-&gt; {String(m.candidateValue)}</span>
@@ -270,7 +270,7 @@ export function ModelComparePage({ onBack }: ModelComparePageProps) {
             {comparison.opCounts.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <SectionHeader>Op type count changes ({comparison.opCounts.length})</SectionHeader>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, auto)', columnGap: 16, rowGap: 2, fontSize: 11, color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, auto)', columnGap: 16, rowGap: 2, fontSize: 13, color: 'var(--text-secondary)' }}>
                   {comparison.opCounts.map((c) => (
                     <div key={c.opType} style={{ display: 'contents' }} data-testid={`compare-opcount-${c.opType}`}>
                       <span>{c.opType}</span><span>{c.baselineCount}</span><span>-&gt; {c.candidateCount}</span>
@@ -283,7 +283,7 @@ export function ModelComparePage({ onBack }: ModelComparePageProps) {
             {comparison.attributes.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <SectionHeader>Attribute changes ({comparison.attributes.length})</SectionHeader>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11, color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 13, color: 'var(--text-secondary)' }}>
                   {comparison.attributes.map((a, i) => (
                     <span key={i} data-testid="compare-attribute-change">
                       {a.opType} {a.attrName}: {String(a.baselineValue ?? '(none)')} -&gt; {String(a.candidateValue ?? '(none)')}
@@ -296,7 +296,7 @@ export function ModelComparePage({ onBack }: ModelComparePageProps) {
             {comparison.initializers.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <SectionHeader>Initializer changes ({comparison.initializers.length})</SectionHeader>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11, color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 13, color: 'var(--text-secondary)' }}>
                   {comparison.initializers.map((init) => (
                     <span key={init.name} data-testid="compare-initializer-change">
                       {init.name}: {init.status} ({formatShapeCell(init.baselineShape)} -&gt; {formatShapeCell(init.candidateShape)})
@@ -309,7 +309,7 @@ export function ModelComparePage({ onBack }: ModelComparePageProps) {
             {comparison.io.some((c) => c.status !== 'unchanged') && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <SectionHeader>Graph I/O changes</SectionHeader>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11, color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 13, color: 'var(--text-secondary)' }}>
                   {comparison.io.filter((c) => c.status !== 'unchanged').map((io) => (
                     <span key={`${io.ioKind}-${io.name}`} data-testid="compare-io-change">
                       [{io.ioKind}] {io.name}: {io.status} ({formatShapeCell(io.baselineShape)} -&gt; {formatShapeCell(io.candidateShape)})
@@ -322,7 +322,7 @@ export function ModelComparePage({ onBack }: ModelComparePageProps) {
             {comparison.opCounts.length === 0 && comparison.attributes.length === 0 && comparison.initializers.length === 0
               && comparison.nodeMatch.addedNodes.length === 0 && comparison.nodeMatch.removedNodes.length === 0
               && !comparison.io.some((c) => c.status !== 'unchanged') && comparison.metadata.length === 0 && (
-              <span style={{ color: 'var(--color-green)', fontSize: 11 }}>No structural differences detected.</span>
+              <span style={{ color: 'var(--color-green)', fontSize: 13 }}>No structural differences detected.</span>
             )}
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 16 }}>
@@ -342,12 +342,12 @@ export function ModelComparePage({ onBack }: ModelComparePageProps) {
               )}
             </div>
 
-            {recipeMessage && <span style={{ color: 'var(--color-amber)', fontSize: 11 }}>{recipeMessage}</span>}
+            {recipeMessage && <span style={{ color: 'var(--color-amber)', fontSize: 13 }}>{recipeMessage}</span>}
 
             {latencyResult && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <SectionHeader>Latency (avg / median ms, ONNX Runtime Web, this machine)</SectionHeader>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, auto)', columnGap: 16, rowGap: 2, fontSize: 11, color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, auto)', columnGap: 16, rowGap: 2, fontSize: 13, color: 'var(--text-secondary)' }}>
                   <span>Baseline</span>
                   <span data-testid="compare-latency-baseline" style={'error' in latencyResult.baseline ? { color: 'var(--color-error)' } : undefined}>
                     {'error' in latencyResult.baseline ? latencyResult.baseline.error : `${latencyResult.baseline.avgMs.toFixed(2)} / ${latencyResult.baseline.medianMs.toFixed(2)}`}
@@ -364,20 +364,20 @@ export function ModelComparePage({ onBack }: ModelComparePageProps) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <SectionHeader>Output comparison (generated inputs, ONNX Runtime Web)</SectionHeader>
                 {(!outputResult.baseline.inferenceOk || !outputResult.candidate.inferenceOk) ? (
-                  <span style={{ color: 'var(--color-error)', fontSize: 11 }}>
+                  <span style={{ color: 'var(--color-error)', fontSize: 13 }}>
                     {outputResult.baseline.error ?? outputResult.candidate.error ?? 'Inference failed on one or both models'}
                   </span>
                 ) : (
                   <div data-testid="compare-output-comparisons" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {outputComparisons?.map((c) => (
                       <div key={c.name} data-testid={`compare-output-${c.name}`} style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <span style={{ color: 'var(--text-primary)', fontSize: 11 }}>{c.name}</span>
+                        <span style={{ color: 'var(--text-primary)', fontSize: 13 }}>{c.name}</span>
                         {!c.presentInOriginal || !c.presentInModified ? (
-                          <span style={{ color: 'var(--color-error)', fontSize: 10 }}>Only present in {c.presentInOriginal ? 'baseline' : 'candidate'}</span>
+                          <span style={{ color: 'var(--color-error)', fontSize: 12 }}>Only present in {c.presentInOriginal ? 'baseline' : 'candidate'}</span>
                         ) : !c.shapeMatch ? (
-                          <span style={{ color: 'var(--color-error)', fontSize: 10 }}>Shape mismatch: {c.originalShape?.join('x')} vs {c.modifiedShape?.join('x')}</span>
+                          <span style={{ color: 'var(--color-error)', fontSize: 12 }}>Shape mismatch: {c.originalShape?.join('x')} vs {c.modifiedShape?.join('x')}</span>
                         ) : (
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, auto)', columnGap: 16, rowGap: 2, fontSize: 10, color: 'var(--text-secondary)' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, auto)', columnGap: 16, rowGap: 2, fontSize: 12, color: 'var(--text-secondary)' }}>
                             <span>Max abs error</span><span>{formatMetric(c.maxAbsErr)}</span>
                             <span>Cosine similarity</span><span>{formatMetric(c.cosineSim)}</span>
                           </div>

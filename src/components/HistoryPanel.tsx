@@ -36,7 +36,7 @@ export function HistoryPanel({ entries, index, onJump }: HistoryPanelProps) {
       }}
     >
       <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        <span style={{ color: 'var(--text-dim)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+        <span style={{ color: 'var(--text-dim)', fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
           {entries.length} {entries.length === 1 ? 'edit' : 'edits'}
         </span>
       </div>
@@ -67,12 +67,12 @@ export function HistoryPanel({ entries, index, onJump }: HistoryPanelProps) {
                 color: isCurrent ? 'var(--color-amber)' : isFuture ? 'var(--text-dim)' : 'var(--text-secondary)',
                 opacity: isFuture ? 0.55 : 1,
                 fontFamily: 'var(--font-mono)',
-                fontSize: 11,
+                fontSize: 13,
                 letterSpacing: '0.02em',
                 lineHeight: 1.5,
               }}
             >
-              <span style={{ flexShrink: 0, color: isCurrent ? 'var(--color-amber)' : 'var(--text-dim)', fontSize: 10 }}>
+              <span style={{ flexShrink: 0, color: isCurrent ? 'var(--color-amber)' : 'var(--text-dim)', fontSize: 12 }}>
                 {String(row.index).padStart(2, '0')}
               </span>
               <span>{row.label}</span>

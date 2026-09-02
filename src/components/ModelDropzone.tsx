@@ -164,7 +164,7 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
               style={{
                 color: 'var(--text-dim)',
                 letterSpacing: '0.02em',
-                fontSize: 11,
+                fontSize: 13,
                 textAlign: 'center',
                 maxWidth: 420,
               }}
@@ -177,7 +177,7 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
               color: 'var(--text-dim)',
               textTransform: 'uppercase',
               letterSpacing: '0.12em',
-              fontSize: 11,
+              fontSize: 13,
             }}
           >
             Drop another .onnx or .tflite model
@@ -234,7 +234,7 @@ export function ModelDropzone({ onModelLoaded, status, error, progressLabel, pro
             >
               Drop .onnx or .tflite model
             </span>
-            <span style={{ color: 'var(--text-dim)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            <span style={{ color: 'var(--text-dim)', fontSize: 13, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
               or click anywhere to browse
             </span>
           </div>
